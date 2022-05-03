@@ -1,0 +1,7 @@
+[package]
+name = "scene-graph"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thunderdome = "0.5"
