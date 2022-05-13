@@ -15,16 +15,14 @@ impl<'a, T> SceneGraphIter<'a, T> {
     }
 }
 
-impl<'a, T: std::fmt::Debug> Iterator for SceneGraphIter<'a, T> {
+impl<'a, T> Iterator for SceneGraphIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            println!("stack frame = {:#?}", self.stacks);
             // if we're out of stack frames, we die here
             let stack_frame = self.stacks.last_mut()?;
 
-            println!("num_children = {}", stack_frame.node.num_children);
             let current_idx = stack_frame.node.first_child + stack_frame.child_idx as usize;
             if stack_frame.child_idx == stack_frame.node.num_children {
                 self.stacks.pop();

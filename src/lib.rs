@@ -19,8 +19,22 @@ impl<T> SceneGraph<T> {
         }
     }
 
+    /// Clears all nodes from `self`, leaving the `Root` in place. If you want to edit the root too,
+    /// just make a new SceneGraph.
+    pub fn clear(&mut self) {
+        let root = self.arena.swap_remove(0);
+        self.arena.clear();
+        self.arena.push(Node::new(root.value));
+    }
+
     /// Attaches a node to another node, returning a handle to it.
+    #[cfg(not(feature = "deny_double"))]
     pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
+        self.attach_inner(parent, value)
+    }
+
+    /// This is the inner attach!
+    fn attach_inner(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
         let arena_len = self.arena.len();
 
         let new_node = Node::new(value);
@@ -57,7 +71,7 @@ impl<T> SceneGraph<T> {
         self.get(self.root_idx()).unwrap()
     }
 
-    pub fn root_idx(&self) -> NodeIndex {
+    pub const fn root_idx(&self) -> NodeIndex {
         NodeIndex(0)
     }
 
@@ -82,6 +96,18 @@ impl<T: PartialEq> SceneGraph<T> {
         }
 
         None
+    }
+
+    /// Attaches a node to another node, returning a handle to it.
+    #[cfg(feature = "deny_double")]
+    pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
+        for v in self.arena.iter() {
+            if v.value.eq(&value) {
+                return Err(SceneGraphErr::NodeAlreadyPresent);
+            }
+        }
+
+        self.attach_inner(parent, value)
     }
 }
 
@@ -129,6 +155,9 @@ pub struct NodeIndex(usize);
 pub enum SceneGraphErr {
     #[error("parent node not found")]
     ParentNodeNotFound,
+
+    #[error("not cannot be attachd because it is already present")]
+    NodeAlreadyPresent,
 }
 
 #[cfg(test)]
@@ -142,6 +171,13 @@ mod tests {
         }
 
         out
+    }
+
+    #[test]
+    fn cannot_double_attach() {
+        let mut sg = SceneGraph::new("Root");
+        sg.attach(sg.root_idx(), "Bad").unwrap();
+        sg.attach(sg.root_idx(), "Oh No!").unwrap();
     }
 
     #[test]

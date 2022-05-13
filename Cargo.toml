@@ -3,6 +3,16 @@ name = "scene-graph"
 version = "0.1.0"
 edition = "2021"
 
+
 [dependencies]
-thunderdome = "0.5"
 thiserror = "1.0"
+
+[features]
+deny_double = []
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "benches"
+harness = false
