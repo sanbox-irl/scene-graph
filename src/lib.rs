@@ -118,7 +118,7 @@ impl<T> SceneGraph<T> {
     }
 }
 
-impl<T: PartialEq + std::fmt::Debug> SceneGraph<T> {
+impl<T: PartialEq> SceneGraph<T> {
     /// Gets the index of a given value of T, if it's in the map.
     pub fn get_index(&self, value: &T) -> Option<NodeIndex> {
         for (i, v) in self.arena.iter().enumerate() {
