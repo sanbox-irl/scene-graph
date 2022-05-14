@@ -11,12 +11,6 @@ pub struct SceneGraph<T> {
 }
 
 impl<T> SceneGraph<T> {
-    pub const fn root_idx(&self) -> NodeIndex {
-        NodeIndex(0)
-    }
-}
-
-impl<T: std::fmt::Debug> SceneGraph<T> {
     /// We take a root node here, but we will never actually give this root node back
     /// in any iteration.
     pub fn new(root: T) -> Self {
@@ -95,6 +89,10 @@ impl<T: std::fmt::Debug> SceneGraph<T> {
         }
 
         node
+    }
+
+    pub const fn root_idx(&self) -> NodeIndex {
+        NodeIndex(0)
     }
 
     /// Gets a given node based on `NodeIndex`.
