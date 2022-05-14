@@ -4,15 +4,26 @@ use scene_graph::*;
 pub fn criterion_benchmark(c: &mut Criterion) {
     let input_node: Vec<_> = (0..50_000).map(|v| format!("Node_{}", v)).collect();
     let mut sg = SceneGraph::new("Root");
-    c.bench_function("add 50000", |b| {
+    c.bench_function("add 1st node", |b| {
         b.iter(|| {
-            for v in input_node.iter() {
-                sg.attach(sg.root_idx(), v).unwrap();
-            }
-
-            sg.clear();
+            sg.attach(sg.root_idx(), "single boy").unwrap();
         })
     });
+
+    for v in input_node.iter() {
+        sg.attach(sg.root_idx(), v).unwrap();
+    }
+
+    c.bench_function("add 50000th node", |b| {
+        b.iter(|| {
+            sg.attach(sg.root_idx(), "Finality").unwrap();
+        })
+    });
+
+    sg.clear();
+    for v in input_node.iter() {
+        sg.attach(sg.root_idx(), v).unwrap();
+    }
 
     c.bench_function("iter 50k", |b| {
         b.iter(|| {
@@ -21,6 +32,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             }
         })
     });
+
+    sg.clear();
 }
 
 criterion_group!(benches, criterion_benchmark);

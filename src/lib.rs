@@ -11,6 +11,12 @@ pub struct SceneGraph<T> {
 }
 
 impl<T> SceneGraph<T> {
+    pub const fn root_idx(&self) -> NodeIndex {
+        NodeIndex(0)
+    }
+}
+
+impl<T: std::fmt::Debug> SceneGraph<T> {
     /// We take a root node here, but we will never actually give this root node back
     /// in any iteration.
     pub fn new(root: T) -> Self {
@@ -56,6 +62,11 @@ impl<T> SceneGraph<T> {
             self.arena.insert(target_idx, new_node);
 
             // now we need to increment *everyone*
+            for node in self.arena.iter_mut() {
+                if node.first_child >= target_idx {
+                    node.first_child += 1;
+                }
+            }
 
             target_idx
         };
@@ -63,16 +74,39 @@ impl<T> SceneGraph<T> {
         Ok(NodeIndex(idx))
     }
 
+    /// Removes a given node from the scene graph.
+    ///
+    /// ## Panics
+    /// Panics if index is out of bounds.
+    pub fn remove(&mut self, node_index: NodeIndex) -> Node<T> {
+        let node = self.arena.remove(node_index.0);
+
+        // decrement everyone
+        // now we need to increment *everyone*
+        for node in self.arena.iter_mut() {
+            // check parent...
+            if (node.first_child..(node.first_child + node.num_children as usize))
+                .contains(&node_index.0)
+            {
+                node.num_children -= 1;
+            } else if node.first_child > node_index.0 {
+                node.first_child -= 1;
+            }
+        }
+
+        node
+    }
+
+    /// Gets a given node based on `NodeIndex`.
+    ///
+    /// **Warning:** `NodeIndex` is not stable across `attach` and `remove`, and so,
+    /// you should consider using `get_by_value` instead.
     pub fn get(&self, node_index: NodeIndex) -> Option<&Node<T>> {
         self.arena.get(node_index.0)
     }
 
     pub fn get_root(&self) -> &Node<T> {
         self.get(self.root_idx()).unwrap()
-    }
-
-    pub const fn root_idx(&self) -> NodeIndex {
-        NodeIndex(0)
     }
 
     // /// Iterate mutably over the Scene Graph in a depth first traversal.
@@ -86,7 +120,7 @@ impl<T> SceneGraph<T> {
     }
 }
 
-impl<T: PartialEq> SceneGraph<T> {
+impl<T: PartialEq + std::fmt::Debug> SceneGraph<T> {
     /// Gets the index of a given value of T, if it's in the map.
     pub fn get_index(&self, value: &T) -> Option<NodeIndex> {
         for (i, v) in self.arena.iter().enumerate() {
@@ -96,6 +130,13 @@ impl<T: PartialEq> SceneGraph<T> {
         }
 
         None
+    }
+
+    /// Gets the node of a given value of T, if it's in the map.
+    pub fn get_by_value(&self, value: &T) -> Option<&Node<T>> {
+        let idx = self.get_index(value)?;
+
+        self.get(idx)
     }
 
     /// Attaches a node to another node, returning a handle to it.
@@ -158,6 +199,9 @@ pub enum SceneGraphErr {
 
     #[error("not cannot be attachd because it is already present")]
     NodeAlreadyPresent,
+
+    #[error("scene graph root cannot be removed")]
+    CannotRemoveRoot,
 }
 
 #[cfg(test)]
@@ -165,6 +209,15 @@ mod tests {
     use super::*;
 
     fn get_values(sg: &SceneGraph<&'static str>) -> Vec<&'static str> {
+        let mut out = vec![];
+        for v in sg.iter() {
+            out.push(*v);
+        }
+
+        out
+    }
+
+    fn get_arena_values(sg: &SceneGraph<&'static str>) -> Vec<&'static str> {
         let mut out = vec![];
         for v in sg.arena.iter() {
             out.push(v.value);
@@ -190,7 +243,7 @@ mod tests {
 
         assert_eq!(
             get_values(&sg),
-            vec!["Root", "First Child", "Second Child", "First Grandchild"]
+            vec!["First Child", "Second Child", "First Grandchild"]
         );
     }
 
@@ -226,5 +279,46 @@ mod tests {
         let new_idx = sg.get_index(&"First Grandchild").unwrap();
 
         assert_ne!(idx, new_idx);
+    }
+
+    #[test]
+    fn attach_bump_internals() {
+        let mut sg = SceneGraph::new("Root");
+        let first_child = sg.attach(sg.root_idx(), "First Child").unwrap();
+        let idx = sg.attach(first_child, "First Grandchild").unwrap();
+
+        assert_eq!(idx.0, 2);
+        assert_eq!(
+            sg.get(first_child).unwrap().first_child,
+            sg.get_index(&"First Grandchild").unwrap().0
+        );
+
+        sg.attach(sg.root_idx(), "Second Child").unwrap();
+        assert_eq!(
+            sg.get(first_child).unwrap().first_child,
+            sg.get_index(&"First Grandchild").unwrap().0
+        );
+    }
+
+    #[test]
+    fn remove() {
+        let mut sg = SceneGraph::new("Root");
+        sg.attach(sg.root_idx(), "First Child").unwrap();
+        let second_child = sg.attach(sg.root_idx(), "Second Child").unwrap();
+        sg.attach(sg.root_idx(), "Third Child").unwrap();
+
+        sg.remove(second_child);
+
+        assert_eq!(get_values(&sg), vec!["First Child", "Third Child"]);
+
+        let third_child = sg.get_index(&"Third Child").unwrap();
+        sg.attach(third_child, "First Grandchild").unwrap();
+        let third_child = sg.get_index(&"Third Child").unwrap();
+        sg.remove(third_child);
+        assert_eq!(get_values(&sg), vec!["First Child"]);
+        assert_eq!(
+            get_arena_values(&sg),
+            vec!["Root", "First Child", "First Grandchild"]
+        );
     }
 }

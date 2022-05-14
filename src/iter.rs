@@ -5,7 +5,7 @@ pub struct SceneGraphIter<'a, T> {
     stacks: Vec<StackState<'a, T>>,
 }
 
-impl<'a, T> SceneGraphIter<'a, T> {
+impl<'a, T: std::fmt::Debug> SceneGraphIter<'a, T> {
     pub fn new(sg: &'a SceneGraph<T>) -> Self {
         let head_node = sg.get_root();
         SceneGraphIter {
@@ -15,7 +15,7 @@ impl<'a, T> SceneGraphIter<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for SceneGraphIter<'a, T> {
+impl<'a, T: std::fmt::Debug> Iterator for SceneGraphIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
