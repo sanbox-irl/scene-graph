@@ -14,9 +14,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         sg.attach(sg.root_idx(), v).unwrap();
     }
 
-    c.bench_function("add 50000th node", |b| {
+    c.bench_function("add/remove 50000th node", |b| {
         b.iter(|| {
-            sg.attach(sg.root_idx(), "Finality").unwrap();
+            let idx = sg.attach(sg.root_idx(), "Finality").unwrap();
+            sg.remove(idx);
         })
     });
 
