@@ -150,15 +150,15 @@ impl<T: PartialEq> SceneGraph<T> {
     }
 }
 
-// impl<'a, T> IntoIterator for &'a SceneGraph<T> {
-//     type Item = &'a T;
+impl<'a, T> IntoIterator for &'a SceneGraph<T> {
+    type Item = (&'a T, &'a T);
 
-//     type IntoIter = SceneGraphIter<'a, T>;
+    type IntoIter = SceneGraphIter<'a, T>;
 
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.iter()
-//     }
-// }
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
 
 // impl<'a, T> IntoIterator for &'a mut SceneGraph<T> {
 //     type Item = &'a mut T;
@@ -208,7 +208,7 @@ mod tests {
 
     fn get_values(sg: &SceneGraph<&'static str>) -> Vec<&'static str> {
         let mut out = vec![];
-        for v in sg.iter() {
+        for (_, v) in sg.iter() {
             out.push(*v);
         }
 

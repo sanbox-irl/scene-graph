@@ -16,7 +16,7 @@ impl<'a, T> SceneGraphIter<'a, T> {
 }
 
 impl<'a, T> Iterator for SceneGraphIter<'a, T> {
-    type Item = &'a T;
+    type Item = (&'a T, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -31,6 +31,7 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
             stack_frame.child_idx += 1;
 
             let output = &self.sg.arena[current_idx];
+            let parent = &stack_frame.node.value;
 
             // add this to our stack frame idx
             self.stacks.push(StackState {
@@ -38,7 +39,8 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
                 child_idx: 0,
             });
 
-            return Some(&output.value);
+            // we have to reborrow because of the push above
+            return Some((parent, &output.value));
         }
     }
 }
@@ -78,7 +80,7 @@ mod tests {
         sg.attach(second_child, "First Grandchild").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter().cloned()),
+            Vec::from_iter(sg.iter().map(|(_parent, value)| value).cloned()),
             vec!["First Child", "Second Child", "First Grandchild"]
         );
     }
@@ -89,6 +91,9 @@ mod tests {
         let root_idx = sg.root_idx();
         sg.attach(root_idx, "First Child").unwrap();
 
-        assert_eq!(Vec::from_iter(sg.iter().cloned()), vec!["First Child",]);
+        assert_eq!(
+            Vec::from_iter(sg.iter().map(|(_parent, value)| value).cloned()),
+            vec!["First Child",]
+        );
     }
 }
