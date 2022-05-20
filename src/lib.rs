@@ -6,6 +6,7 @@ mod iter;
 pub use iter::SceneGraphIter;
 // pub use iter_mut::SceneGraphIterMut;
 
+#[derive(Debug)]
 pub struct SceneGraph<T> {
     arena: Vec<Node<T>>,
 }
@@ -53,14 +54,19 @@ impl<T> SceneGraph<T> {
         } else {
             let target_idx = parent.num_children as usize + parent.first_child as usize;
             parent.num_children += 1;
-            self.arena.insert(target_idx, new_node);
 
-            // now we need to increment *everyone*
-            for node in self.arena.iter_mut() {
-                if node.first_child >= target_idx {
-                    node.first_child += 1;
+            let mut child_idx = parent.first_child;
+            let old_last_child = loop {
+                let child = self.arena.get_mut(child_idx).unwrap();
+                if child.next_sibling == 0 {
+                    break child;
                 }
-            }
+                child_idx = child.next_sibling;
+            };
+
+            old_last_child.next_sibling = target_idx;
+
+            self.arena.insert(target_idx, new_node);
 
             target_idx
         };
@@ -170,11 +176,22 @@ impl<'a, T> IntoIterator for &'a SceneGraph<T> {
 //     }
 // }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Node<T> {
     pub value: T,
     first_child: usize,
     num_children: u32,
+    next_sibling: usize,
+}
+
+impl<T> std::fmt::Debug for Node<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+            .field("first_child", &self.first_child)
+            .field("num_children", &self.num_children)
+            .field("next_sibling", &self.next_sibling)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T> Node<T> {
@@ -183,6 +200,7 @@ impl<T> Node<T> {
             value,
             first_child: 0,
             num_children: 0,
+            next_sibling: 0,
         }
     }
 }
@@ -238,6 +256,8 @@ mod tests {
         sg.attach(root_idx, "First Child").unwrap();
         let second_child = sg.attach(root_idx, "Second Child").unwrap();
         sg.attach(second_child, "First Grandchild").unwrap();
+
+        println!("Tree looks like {:#?}", sg);
 
         assert_eq!(
             get_values(&sg),
