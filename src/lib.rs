@@ -20,7 +20,7 @@ impl<T> SceneGraph<T> {
     /// in any iteration.
     pub fn new(root: T) -> Self {
         let mut arena = Arena::new();
-        let root_index = arena.insert(Node::new(root));
+        let root_index = arena.insert(Node::new(root, None));
         Self {
             root_idx: root_index,
             arena,
@@ -35,7 +35,7 @@ impl<T> SceneGraph<T> {
     pub fn clear(&mut self) {
         let root = self.arena.remove(self.root_idx).unwrap();
         self.arena.clear();
-        self.root_idx = self.arena.insert(Node::new(root.value));
+        self.root_idx = self.arena.insert(Node::new(root.value, None));
     }
 
     /// Checks if the SceneGraph contains only the root.
@@ -46,7 +46,7 @@ impl<T> SceneGraph<T> {
     /// Attaches a node to another node, returning a handle to it.
     pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
         // push that node!
-        let new_idx = self.arena.insert(Node::new(value));
+        let new_idx = self.arena.insert(Node::new(value, Some(parent.0)));
 
         let parent = self
             .arena
@@ -76,6 +76,10 @@ impl<T> SceneGraph<T> {
     /// Removes a given node from the scene graph, returning a new SceneGraph where the given
     /// node is now the *root*.
     pub fn detach(&mut self, node_index: NodeIndex) -> Option<SceneGraph<T>> {
+        if node_index.0 == self.root_idx {
+            return None;
+        }
+
         let node = self.arena.remove(node_index.0)?;
         let mut new_sg = SceneGraph::new(node.value);
 
@@ -91,53 +95,24 @@ impl<T> SceneGraph<T> {
             helper_map.insert(detached_node.node_idx, new_idx.0);
         }
 
-        // fix up the parent if it was the first child...
-        let parent_index = self.parent(node_index).unwrap();
-        let mut parent_children = self.arena[parent_index.0].children.unwrap();
-
-        if parent_children.first == parent_children.last && parent_children.first == node_index.0 {
-            self.arena[parent_index.0].children = None;
-        } else {
-            // extremely hard to follow the logic of this unwrap here, but if this branch is taken,
-            // then we're *never* the last child, which means we have a sibling.
-            if parent_children.first == node_index.0 {
-                parent_children.first = node.next_sibling.unwrap();
-            }
-
-            // fix up the next children...
-            let mut last_valid_child = parent_children.first;
-            loop {
-                let sibling = self.arena.get_mut(last_valid_child).unwrap();
-                if sibling.next_sibling == Some(node_index.0) {
-                    sibling.next_sibling = node.next_sibling;
-
-                    // pop over our deletion or break
-                    match node.next_sibling {
-                        Some(next_sibling) => {
-                            last_valid_child = next_sibling;
-                        }
-                        None => {
-                            break;
-                        }
-                    }
-                }
-
-                if sibling.next_sibling.is_none() {
-                    break;
-                }
-
-                last_valid_child = sibling.next_sibling.unwrap();
-            }
-
-            if parent_children.last == node_index.0 {
-                parent_children.last = last_valid_child;
-            }
-
-            // finally, dump our updated parent children back
-            self.arena[parent_index.0].children = Some(parent_children);
-        }
+        self.fix_parent(node.next_sibling, node.parent.unwrap(), node_index.0);
 
         Some(new_sg)
+    }
+
+    /// Removes a node *without* returning anything. This can save a few allocations.
+    pub fn remove(&mut self, node_index: NodeIndex) {
+        if node_index.0 == self.root_idx {
+            return;
+        }
+
+        let node = self.arena.remove(node_index.0);
+        let node = if let Some(node) = node { node } else { return };
+
+        // detach em all!
+        for _v in SceneGraphDetachIter::new(self, node_index, node.children) {}
+
+        self.fix_parent(node.next_sibling, node.parent.unwrap(), node_index.0);
     }
 
     pub fn root_idx(&self) -> NodeIndex {
@@ -163,25 +138,10 @@ impl<T> SceneGraph<T> {
 
     /// Returns the parent NodeIndex of a given Node.
     ///
-    /// This operation is O(N) over the number of nodes in the SceneGraph.
+    /// This operation is O1 over the number of nodes in the SceneGraph.
+    /// Note: this returns `None` for the Root.
     pub fn parent(&self, node_index: NodeIndex) -> Option<NodeIndex> {
-        for (i, v) in self.arena.iter() {
-            if let Some(children) = v.children {
-                let mut child = children.first;
-                loop {
-                    if child == node_index.0 {
-                        return Some(NodeIndex(i));
-                    } else if child == children.last {
-                        break;
-                    } else {
-                        // we know it has a next sibling always...
-                        child = self.arena[child].next_sibling.unwrap();
-                    }
-                }
-            }
-        }
-
-        None
+        self.get(node_index)?.parent.map(NodeIndex)
     }
 
     // /// Iterate mutably over the Scene Graph in a depth first traversal.
@@ -199,6 +159,59 @@ impl<T> SceneGraph<T> {
     /// Note: the `root` will never be detached.
     pub fn iter_detach(&mut self) -> SceneGraphDetachIter<'_, T> {
         SceneGraphDetachIter::new(self, NodeIndex(self.root_idx), self.get_root().children)
+    }
+
+    /// Fixes a parent with a removed child.
+    fn fix_parent(
+        &mut self,
+        removed_next_sibling: Option<Index>,
+        removed_parent: Index,
+        removed_idx: Index,
+    ) {
+        // fix up the parent if it was the first child...
+        let mut parent_children = self.arena[removed_parent].children.unwrap();
+
+        if parent_children.first == parent_children.last && parent_children.first == removed_idx {
+            self.arena[removed_parent].children = None;
+        } else {
+            // extremely hard to follow the logic of this unwrap here, but if this branch is taken,
+            // then we're *never* the last child, which means we have a sibling.
+            if parent_children.first == removed_idx {
+                parent_children.first = removed_next_sibling.unwrap();
+            }
+
+            // fix up the next children...
+            let mut last_valid_child = parent_children.first;
+            loop {
+                let sibling = self.arena.get_mut(last_valid_child).unwrap();
+                if sibling.next_sibling == Some(removed_idx) {
+                    sibling.next_sibling = removed_next_sibling;
+
+                    // pop over our deletion or break
+                    match removed_next_sibling {
+                        Some(next_sibling) => {
+                            last_valid_child = next_sibling;
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+
+                if sibling.next_sibling.is_none() {
+                    break;
+                }
+
+                last_valid_child = sibling.next_sibling.unwrap();
+            }
+
+            if parent_children.last == removed_idx {
+                parent_children.last = last_valid_child;
+            }
+
+            // finally, dump our updated parent children back
+            self.arena[removed_parent].children = Some(parent_children);
+        }
     }
 }
 
@@ -245,6 +258,7 @@ impl<'a, T> IntoIterator for &'a SceneGraph<T> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Node<T> {
     pub value: T,
+    parent: Option<Index>,
     children: Option<Children>,
     next_sibling: Option<Index>,
 }
@@ -258,6 +272,7 @@ pub struct Children {
 impl<T> std::fmt::Debug for Node<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
+            .field("parent", &self.parent)
             .field("children", &self.children)
             .field("next_sibling", &self.next_sibling)
             .finish()
@@ -265,9 +280,10 @@ impl<T> std::fmt::Debug for Node<T> {
 }
 
 impl<T> Node<T> {
-    pub fn new(value: T) -> Self {
+    pub fn new(value: T, parent: Option<Index>) -> Self {
         Self {
             value,
+            parent,
             next_sibling: None,
             children: None,
         }
