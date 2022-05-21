@@ -36,6 +36,18 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     });
 
     sg.clear();
+
+    for v in input_node.iter().take(64) {
+        sg.attach(sg.root_idx(), v).unwrap();
+    }
+
+    c.bench_function("iter 64", |b| {
+        b.iter(|| {
+            for v in sg.iter() {
+                black_box(v);
+            }
+        })
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);

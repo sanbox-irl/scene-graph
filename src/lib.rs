@@ -29,10 +29,13 @@ impl<T> SceneGraph<T> {
 
     /// Clears all nodes from `self`, leaving the `Root` in place. If you want to edit the root too,
     /// just make a new SceneGraph.
+    /// 
+    /// Note: this method maintains the underlying container's size, so future attaches could have
+    /// some performance gains.
     pub fn clear(&mut self) {
-        let root = self.arena.remove_by_slot(0).unwrap();
+        let root = self.arena.remove(self.root_idx).unwrap();
         self.arena.clear();
-        self.root_idx = self.arena.insert(Node::new(root.1.value));
+        self.root_idx = self.arena.insert(Node::new(root.value));
     }
 
     /// Checks if the SceneGraph contains only the root.
