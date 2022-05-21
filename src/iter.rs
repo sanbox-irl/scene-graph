@@ -1,18 +1,19 @@
 use crate::{Node, SceneGraph};
+use std::collections::VecDeque;
 
 pub struct SceneGraphIter<'a, T> {
     sg: &'a SceneGraph<T>,
-    stacks: Vec<StackState<'a, T>>,
+    stacks: VecDeque<StackState<'a, T>>,
 }
 
 impl<'a, T> SceneGraphIter<'a, T> {
     pub fn new(sg: &'a SceneGraph<T>) -> Self {
+        let mut stacks = VecDeque::new();
         let head_node = sg.get_root();
-        let first_child = sg.arena.get(head_node.first_child);
-        SceneGraphIter {
-            sg,
-            stacks: vec![StackState::new(head_node, first_child)],
-        }
+        if let Some(first_child) = head_node.first_child {
+            stacks.push_front(StackState::new(head_node, &sg.arena[first_child]));
+        };
+        SceneGraphIter { sg, stacks }
     }
 }
 
@@ -20,40 +21,42 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
     type Item = (&'a T, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            // if we're out of stack frames, we die here
-            let stack_frame = self.stacks.last_mut()?;
+        // if we're out of stack frames, we die here
+        let stack_frame = self.stacks.pop_front()?;
 
-            match &mut stack_frame.current_child {
-                Some(child) => {
-                    let next_sibling = child.next_sibling;
-                    // okay time to change the child
-                    let child = std::mem::replace(
-                        &mut stack_frame.current_child,
-                        self.sg.arena.get(next_sibling),
-                    )
-                    .unwrap();
-
-                    return Some((&stack_frame.parent.value, &child.value));
-                }
-                None => {
-                    // we're done here.
-                    self.stacks.pop();
-                    continue;
-                }
-            }
+        // if there's a sibling, push it onto the to do list!
+        if let Some(next_sibling) = stack_frame.current_child.next_sibling {
+            self.stacks.push_front(StackState::new(
+                stack_frame.parent,
+                &self.sg.arena[next_sibling],
+            ));
         }
+
+        if let Some(first_child) = stack_frame.current_child.first_child {
+            let new_stack = StackState::new(stack_frame.current_child, &self.sg.arena[first_child]);
+            self.stacks.push_front(new_stack);
+        }
+
+        Some((&stack_frame.parent.value, &stack_frame.current_child.value))
     }
 }
 
-#[derive(Debug)]
 struct StackState<'a, T> {
     parent: &'a Node<T>,
-    current_child: Option<&'a Node<T>>,
+    current_child: &'a Node<T>,
+}
+
+impl<'a, T> std::fmt::Debug for StackState<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StackState")
+            .field("parent", &self.parent)
+            .field("current_child", &self.current_child)
+            .finish()
+    }
 }
 
 impl<'a, T> StackState<'a, T> {
-    fn new(parent: &'a Node<T>, first_child: Option<&'a Node<T>>) -> Self {
+    fn new(parent: &'a Node<T>, first_child: &'a Node<T>) -> Self {
         Self {
             parent,
             current_child: first_child,
@@ -65,12 +68,9 @@ impl<'a, T> StackState<'a, T> {
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    struct Coord(u32);
-
     #[test]
-    fn scene_graph_returns_nothing_on_empty() {
-        let scene_graph = SceneGraph::new(Coord(0));
+    fn scene_graph_returns_nothing_on_empty_iteration() {
+        let scene_graph = SceneGraph::new("Root");
 
         assert!(scene_graph.iter().next().is_none());
     }
@@ -80,12 +80,26 @@ mod tests {
         let mut sg = SceneGraph::new("Root");
         let root_idx = sg.root_idx();
         sg.attach(root_idx, "First Child").unwrap();
+
         let second_child = sg.attach(root_idx, "Second Child").unwrap();
         sg.attach(second_child, "First Grandchild").unwrap();
 
         assert_eq!(
             Vec::from_iter(sg.iter().map(|(_parent, value)| value).cloned()),
             vec!["First Child", "Second Child", "First Grandchild"]
+        );
+    }
+
+    #[test]
+    fn stagger_iteration() {
+        let mut sg = SceneGraph::new("Root");
+        let root_idx = sg.root_idx();
+        let child = sg.attach(root_idx, "First Child").unwrap();
+        sg.attach(child, "Second Child").unwrap();
+
+        assert_eq!(
+            Vec::from_iter(sg.iter().map(|(_parent, value)| value).cloned()),
+            vec!["First Child", "Second Child"]
         );
     }
 

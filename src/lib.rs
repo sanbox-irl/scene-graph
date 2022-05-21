@@ -1,4 +1,5 @@
 use std::cmp::Eq;
+use thunderdome::{Arena, Index};
 
 mod iter;
 // mod iter_mut;
@@ -8,24 +9,28 @@ pub use iter::SceneGraphIter;
 
 #[derive(Debug)]
 pub struct SceneGraph<T> {
-    arena: Vec<Node<T>>,
+    root_idx: Index,
+    arena: Arena<Node<T>>,
 }
 
 impl<T> SceneGraph<T> {
     /// We take a root node here, but we will never actually give this root node back
     /// in any iteration.
     pub fn new(root: T) -> Self {
+        let mut arena = Arena::new();
+        let root_index = arena.insert(Node::new(root));
         Self {
-            arena: vec![Node::new(root)],
+            root_idx: root_index,
+            arena,
         }
     }
 
     /// Clears all nodes from `self`, leaving the `Root` in place. If you want to edit the root too,
     /// just make a new SceneGraph.
     pub fn clear(&mut self) {
-        let root = self.arena.swap_remove(0);
+        let root = self.arena.remove_by_slot(0).unwrap();
         self.arena.clear();
-        self.arena.push(Node::new(root.value));
+        self.arena.insert_at_slot(0, Node::new(root.1.value));
     }
 
     /// Attaches a node to another node, returning a handle to it.
@@ -36,42 +41,31 @@ impl<T> SceneGraph<T> {
 
     /// This is the inner attach!
     fn attach_inner(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
-        let arena_len = self.arena.len();
+        // push that node!
+        let new_idx = self.arena.insert(Node::new(value));
 
-        let new_node = Node::new(value);
         let parent = self
             .arena
             .get_mut(parent.0)
             .ok_or(SceneGraphErr::ParentNodeNotFound)?;
 
-        let idx = if parent.num_children == 0 {
-            parent.num_children += 1;
-            parent.first_child = arena_len;
+        // fix the parent's last child
+        match parent.first_child {
+            Some(first_child) => {
+                let mut last_sibling = &mut self.arena[first_child];
 
-            self.arena.push(new_node);
-
-            arena_len
-        } else {
-            let target_idx = parent.num_children as usize + parent.first_child as usize;
-            parent.num_children += 1;
-
-            let mut child_idx = parent.first_child;
-            let old_last_child = loop {
-                let child = self.arena.get_mut(child_idx).unwrap();
-                if child.next_sibling == 0 {
-                    break child;
+                while let Some(next_sibling) = last_sibling.next_sibling {
+                    last_sibling = &mut self.arena[next_sibling];
                 }
-                child_idx = child.next_sibling;
-            };
 
-            old_last_child.next_sibling = target_idx;
-
-            self.arena.insert(target_idx, new_node);
-
-            target_idx
+                last_sibling.next_sibling = Some(new_idx);
+            }
+            None => {
+                parent.first_child = Some(new_idx);
+            }
         };
 
-        Ok(NodeIndex(idx))
+        Ok(NodeIndex(new_idx))
     }
 
     /// Removes a given node from the scene graph.
@@ -81,24 +75,25 @@ impl<T> SceneGraph<T> {
     pub fn remove(&mut self, node_index: NodeIndex) -> Node<T> {
         let node = self.arena.remove(node_index.0);
 
-        // decrement everyone
-        // now we need to increment *everyone*
-        for node in self.arena.iter_mut() {
-            // check parent...
-            if (node.first_child..(node.first_child + node.num_children as usize))
-                .contains(&node_index.0)
-            {
-                node.num_children -= 1;
-            } else if node.first_child > node_index.0 {
-                node.first_child -= 1;
-            }
-        }
+        // // decrement everyone
+        // // now we need to increment *everyone*
+        // for node in self.arena.iter_mut() {
+        //     // check parent...
+        //     if (node.first_child..(node.first_child + node.num_children as usize))
+        //         .contains(&node_index.0)
+        //     {
+        //         node.num_children -= 1;
+        //     } else if node.first_child > node_index.0 {
+        //         node.first_child -= 1;
+        //     }
+        // }
 
-        node
+        todo!()
+        // node
     }
 
-    pub const fn root_idx(&self) -> NodeIndex {
-        NodeIndex(0)
+    pub fn root_idx(&self) -> NodeIndex {
+        NodeIndex(self.root_idx)
     }
 
     /// Gets a given node based on `NodeIndex`.
@@ -127,7 +122,7 @@ impl<T> SceneGraph<T> {
 impl<T: PartialEq> SceneGraph<T> {
     /// Gets the index of a given value of T, if it's in the map.
     pub fn get_index(&self, value: &T) -> Option<NodeIndex> {
-        for (i, v) in self.arena.iter().enumerate() {
+        for (i, v) in self.arena.iter() {
             if v.value.eq(value) {
                 return Some(NodeIndex(i));
             }
@@ -179,16 +174,14 @@ impl<'a, T> IntoIterator for &'a SceneGraph<T> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Node<T> {
     pub value: T,
-    first_child: usize,
-    num_children: u32,
-    next_sibling: usize,
+    first_child: Option<Index>,
+    next_sibling: Option<Index>,
 }
 
 impl<T> std::fmt::Debug for Node<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
             .field("first_child", &self.first_child)
-            .field("num_children", &self.num_children)
             .field("next_sibling", &self.next_sibling)
             .finish_non_exhaustive()
     }
@@ -198,15 +191,15 @@ impl<T> Node<T> {
     pub fn new(value: T) -> Self {
         Self {
             value,
-            first_child: 0,
-            num_children: 0,
-            next_sibling: 0,
+            first_child: None,
+            next_sibling: None,
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub struct NodeIndex(usize);
+#[repr(transparent)]
+pub struct NodeIndex(thunderdome::Index);
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SceneGraphErr {
@@ -235,7 +228,7 @@ mod tests {
 
     fn get_arena_values(sg: &SceneGraph<&'static str>) -> Vec<&'static str> {
         let mut out = vec![];
-        for v in sg.arena.iter() {
+        for (_, v) in sg.arena.iter() {
             out.push(v.value);
         }
 
@@ -269,54 +262,53 @@ mod tests {
     fn attach_internals() {
         let mut sg = SceneGraph::new("Root");
 
-        assert_eq!(sg.get_root().num_children, 0);
-        assert_eq!(sg.get_root().first_child, 0);
+        assert_eq!(sg.get_root().first_child, None);
 
         let root_idx = sg.root_idx();
 
         let first_idx = sg.attach(root_idx, "First Child").unwrap();
 
-        assert_eq!(sg.get_root().num_children, 1);
-        assert_eq!(sg.get_root().first_child, first_idx.0);
+        // assert_eq!(sg.get_root().num_children, 1);
+        assert_eq!(sg.get_root().first_child, Some(first_idx.0));
 
         sg.attach(root_idx, "Second Child").unwrap();
 
-        assert_eq!(sg.get_root().num_children, 2);
-        assert_eq!(sg.get_root().first_child, first_idx.0);
+        // assert_eq!(sg.get_root().num_children, 2);
+        assert_eq!(sg.get_root().first_child, Some(first_idx.0));
     }
 
-    #[test]
-    fn attach_bump() {
-        let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
-        let first_child = sg.attach(root_idx, "First Child").unwrap();
-        let idx = sg.attach(first_child, "First Grandchild").unwrap();
+    // #[test]
+    // fn attach_bump() {
+    //     let mut sg = SceneGraph::new("Root");
+    //     let root_idx = sg.root_idx();
+    //     let first_child = sg.attach(root_idx, "First Child").unwrap();
+    //     let idx = sg.attach(first_child, "First Grandchild").unwrap();
 
-        assert_eq!(idx.0, 2);
-        sg.attach(root_idx, "Second Child").unwrap();
-        let new_idx = sg.get_index(&"First Grandchild").unwrap();
+    //     assert_eq!(idx.0.slot(), 2);
+    //     sg.attach(root_idx, "Second Child").unwrap();
+    //     let new_idx = sg.get_index(&"First Grandchild").unwrap();
 
-        assert_ne!(idx, new_idx);
-    }
+    //     assert_ne!(idx, new_idx);
+    // }
 
-    #[test]
-    fn attach_bump_internals() {
-        let mut sg = SceneGraph::new("Root");
-        let first_child = sg.attach(sg.root_idx(), "First Child").unwrap();
-        let idx = sg.attach(first_child, "First Grandchild").unwrap();
+    // #[test]
+    // fn attach_bump_internals() {
+    //     let mut sg = SceneGraph::new("Root");
+    //     let first_child = sg.attach(sg.root_idx(), "First Child").unwrap();
+    //     let idx = sg.attach(first_child, "First Grandchild").unwrap();
 
-        assert_eq!(idx.0, 2);
-        assert_eq!(
-            sg.get(first_child).unwrap().first_child,
-            sg.get_index(&"First Grandchild").unwrap().0
-        );
+    //     assert_eq!(idx.0, 2);
+    //     assert_eq!(
+    //         sg.get(first_child).unwrap().first_child,
+    //         sg.get_index(&"First Grandchild").unwrap().0
+    //     );
 
-        sg.attach(sg.root_idx(), "Second Child").unwrap();
-        assert_eq!(
-            sg.get(first_child).unwrap().first_child,
-            sg.get_index(&"First Grandchild").unwrap().0
-        );
-    }
+    //     sg.attach(sg.root_idx(), "Second Child").unwrap();
+    //     assert_eq!(
+    //         sg.get(first_child).unwrap().first_child,
+    //         sg.get_index(&"First Grandchild").unwrap().0
+    //     );
+    // }
 
     #[test]
     fn remove() {
