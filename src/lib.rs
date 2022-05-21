@@ -32,7 +32,7 @@ impl<T> SceneGraph<T> {
     pub fn clear(&mut self) {
         let root = self.arena.remove_by_slot(0).unwrap();
         self.arena.clear();
-        self.arena.insert_at_slot(0, Node::new(root.1.value));
+        self.root_idx = self.arena.insert(Node::new(root.1.value));
     }
 
     /// Checks if the SceneGraph contains only the root.

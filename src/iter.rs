@@ -1,16 +1,15 @@
 use crate::{Node, SceneGraph};
-use std::collections::VecDeque;
 
 pub struct SceneGraphIter<'a, T> {
     sg: &'a SceneGraph<T>,
-    stacks: VecDeque<StackState<'a, T>>,
+    stacks: Vec<StackState<'a, T>>,
 }
 
 impl<'a, T> SceneGraphIter<'a, T> {
     pub(crate) fn new(sg: &'a SceneGraph<T>, root_node: &'a Node<T>) -> Self {
-        let mut stacks = VecDeque::new();
+        let mut stacks = Vec::new();
         if let Some(first_child) = root_node.first_child {
-            stacks.push_front(StackState::new(root_node, &sg.arena[first_child]));
+            stacks.push(StackState::new(root_node, &sg.arena[first_child]));
         };
         SceneGraphIter { sg, stacks }
     }
@@ -21,11 +20,11 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         // if we're out of stack frames, we die here
-        let stack_frame = self.stacks.pop_front()?;
+        let stack_frame = self.stacks.pop()?;
 
         // if there's a sibling, push it onto the to do list!
         if let Some(next_sibling) = stack_frame.current_child.next_sibling {
-            self.stacks.push_front(StackState::new(
+            self.stacks.push(StackState::new(
                 stack_frame.parent,
                 &self.sg.arena[next_sibling],
             ));
@@ -33,7 +32,7 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
 
         if let Some(first_child) = stack_frame.current_child.first_child {
             let new_stack = StackState::new(stack_frame.current_child, &self.sg.arena[first_child]);
-            self.stacks.push_front(new_stack);
+            self.stacks.push(new_stack);
         }
 
         Some((&stack_frame.parent.value, &stack_frame.current_child.value))
