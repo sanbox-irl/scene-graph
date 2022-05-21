@@ -1,12 +1,15 @@
 use std::cmp::Eq;
 use thunderdome::{Arena, Index};
 
+mod child_iter;
 mod detatch_iter;
 mod iter;
 // mod iter_mut;
 
+pub use child_iter::SceneGraphChildIter;
 pub use detatch_iter::{DetachedNode, SceneGraphDetachIter};
 pub use iter::SceneGraphIter;
+
 // pub use iter_mut::SceneGraphIterMut;
 
 #[derive(Debug)]
@@ -48,29 +51,34 @@ impl<T> SceneGraph<T> {
         // push that node!
         let new_idx = self.arena.insert(Node::new(value, Some(parent.0)));
 
-        let parent = self
-            .arena
-            .get_mut(parent.0)
-            .ok_or(SceneGraphErr::ParentNodeNotFound)?;
-
-        // fix the parent's last child
-        match &mut parent.children {
-            Some(children) => {
-                let old_last = children.last;
-                children.last = new_idx;
-
-                let mut last_sibling = &mut self.arena[old_last];
-                last_sibling.next_sibling = Some(new_idx);
-            }
-            None => {
-                parent.children = Some(Children {
-                    first: new_idx,
-                    last: new_idx,
-                });
-            }
-        };
+        self.place_node(parent.0, new_idx)?;
 
         Ok(NodeIndex(new_idx))
+    }
+
+    /// Attaches an entire scene graph to a place on this graph. The old root node will be at
+    /// the returned NodeIndex.
+    pub fn attach_graph(
+        &mut self,
+        parent: NodeIndex,
+        mut other_graph: SceneGraph<T>,
+    ) -> Result<NodeIndex, SceneGraphErr> {
+        let other_root = other_graph.arena.remove(other_graph.root_idx).unwrap();
+        let new_root_idx = self.attach(parent, other_root.value)?;
+
+        let mut helper_map = std::collections::HashMap::new();
+        helper_map.insert(other_graph.root_idx(), new_root_idx.0);
+
+        for detached_node in other_graph.iter_detach() {
+            let parent_place = helper_map.get(&detached_node.parent_idx).unwrap();
+            let new_idx = self
+                .attach(NodeIndex(*parent_place), detached_node.node_value)
+                .unwrap();
+
+            helper_map.insert(detached_node.node_idx, new_idx.0);
+        }
+
+        Ok(new_root_idx)
     }
 
     /// Removes a given node from the scene graph, returning a new SceneGraph where the given
@@ -98,6 +106,42 @@ impl<T> SceneGraph<T> {
         self.fix_parent(node.next_sibling, node.parent.unwrap(), node_index.0);
 
         Some(new_sg)
+    }
+
+    /// Moves a node from one parent to another parent. If this operation returns `Err`, then
+    /// nothing will have happened to the node.
+    pub fn move_node(
+        &mut self,
+        moving_node_idx: NodeIndex,
+        new_parent: NodeIndex,
+    ) -> Result<(), SceneGraphErr> {
+        if moving_node_idx.0 == self.root_idx {
+            return Err(SceneGraphErr::CannotRemoveRoot);
+        }
+
+        if !self.arena.contains(moving_node_idx.0) || !self.arena.contains(new_parent.0) {
+            return Err(SceneGraphErr::NodeDoesNotExist);
+        }
+
+        // okay, now we hot swap these bitches
+        let moving_node = self
+            .arena
+            .get_mut(moving_node_idx.0)
+            .expect("we checked earlier");
+        let old_parent = moving_node.parent.unwrap();
+        moving_node.parent = Some(new_parent.0);
+
+        let next_sibling = moving_node.next_sibling;
+        moving_node.next_sibling = None;
+
+        // now let's fix our old dad
+        self.fix_parent(next_sibling, old_parent, moving_node_idx.0);
+
+        // place it!
+        self.place_node(new_parent.0, moving_node_idx.0)
+            .expect("we checked earlier");
+
+        Ok(())
     }
 
     /// Removes a node *without* returning anything. This can save a few allocations.
@@ -154,11 +198,75 @@ impl<T> SceneGraph<T> {
         SceneGraphIter::new(self, self.get_root())
     }
 
+    /// Iterate immutably over the Scene Graph in a depth first traversal.
+    pub fn iter_on_node(
+        &self,
+        node_index: NodeIndex,
+    ) -> Result<SceneGraphIter<'_, T>, SceneGraphErr> {
+        let node = self
+            .arena
+            .get(node_index.0)
+            .ok_or(SceneGraphErr::NodeDoesNotExist)?;
+
+        Ok(SceneGraphIter::new(self, node))
+    }
+
     /// Iterate while detaching over the Scene Graph in a depth first traversal.
     ///
     /// Note: the `root` will never be detached.
     pub fn iter_detach(&mut self) -> SceneGraphDetachIter<'_, T> {
         SceneGraphDetachIter::new(self, NodeIndex(self.root_idx), self.get_root().children)
+    }
+
+    /// Iterate directly over only the *direct* children of `parent_index`.
+    ///
+    /// For example, given a graph:
+    /// ROOT:
+    ///     A
+    ///         B
+    ///         C
+    ///             D
+    /// using `iter_children` and passing in the `parent_index` for `A` will only yield `B`
+    /// and `C`, *not* `D`. For that kind of depth first traversal, using `iter_on_node`.
+    pub fn iter_children(
+        &self,
+        parent_index: NodeIndex,
+    ) -> Result<SceneGraphChildIter<'_, T>, SceneGraphErr> {
+        let node = self
+            .arena
+            .get(parent_index.0)
+            .ok_or(SceneGraphErr::NodeDoesNotExist)?;
+
+        Ok(SceneGraphChildIter::new(self, node))
+    }
+
+    /// Places a node as part of moving or attaching it.
+    fn place_node(&mut self, new_parent: Index, node_to_place: Index) -> Result<(), SceneGraphErr> {
+        // okay, now we gotta ATTACH ourselves back, without being monsters about it
+        let parent = self
+            .arena
+            .get_mut(new_parent)
+            .ok_or(SceneGraphErr::ParentNodeNotFound)?;
+
+        // slap ourselves in here
+        match &mut parent.children {
+            Some(children) => {
+                let old_last = children.last;
+                children.last = node_to_place;
+
+                let mut last_sibling = &mut self.arena[old_last];
+                last_sibling.next_sibling = Some(node_to_place);
+            }
+            None => {
+                // this is the easy case
+                parent.children = Some(Children {
+                    first: node_to_place,
+                    last: node_to_place,
+                });
+            }
+        };
+
+        Ok(())
     }
 
     /// Fixes a parent with a removed child.
@@ -186,16 +294,6 @@ impl<T> SceneGraph<T> {
                 let sibling = self.arena.get_mut(last_valid_child).unwrap();
                 if sibling.next_sibling == Some(removed_idx) {
                     sibling.next_sibling = removed_next_sibling;
-
-                    // pop over our deletion or break
-                    match removed_next_sibling {
-                        Some(next_sibling) => {
-                            last_valid_child = next_sibling;
-                        }
-                        None => {
-                            break;
-                        }
-                    }
                 }
 
                 if sibling.next_sibling.is_none() {
@@ -302,6 +400,9 @@ pub enum SceneGraphErr {
     #[error("not cannot be attachd because it is already present")]
     NodeAlreadyPresent,
 
+    #[error("node does not exist")]
+    NodeDoesNotExist,
+
     #[error("scene graph root cannot be removed")]
     CannotRemoveRoot,
 }
@@ -334,8 +435,6 @@ mod tests {
         let second_child = sg.attach(root_idx, "Second Child").unwrap();
         sg.attach(second_child, "First Grandchild").unwrap();
 
-        println!("Tree looks like {:#?}", sg);
-
         assert_eq!(
             get_values(&sg),
             vec!["First Child", "Second Child", "First Grandchild"]
@@ -361,39 +460,6 @@ mod tests {
         assert_eq!(sg.get_root().children.unwrap().first, first_idx.0);
         assert_eq!(sg.get_root().children.unwrap().last, second_idx.0);
     }
-
-    // #[test]
-    // fn attach_bump() {
-    //     let mut sg = SceneGraph::new("Root");
-    //     let root_idx = sg.root_idx();
-    //     let first_child = sg.attach(root_idx, "First Child").unwrap();
-    //     let idx = sg.attach(first_child, "First Grandchild").unwrap();
-
-    //     assert_eq!(idx.0.slot(), 2);
-    //     sg.attach(root_idx, "Second Child").unwrap();
-    //     let new_idx = sg.get_index(&"First Grandchild").unwrap();
-
-    //     assert_ne!(idx, new_idx);
-    // }
-
-    // #[test]
-    // fn attach_bump_internals() {
-    //     let mut sg = SceneGraph::new("Root");
-    //     let first_child = sg.attach(sg.root_idx(), "First Child").unwrap();
-    //     let idx = sg.attach(first_child, "First Grandchild").unwrap();
-
-    //     assert_eq!(idx.0, 2);
-    //     assert_eq!(
-    //         sg.get(first_child).unwrap().first_child,
-    //         sg.get_index(&"First Grandchild").unwrap().0
-    //     );
-
-    //     sg.attach(sg.root_idx(), "Second Child").unwrap();
-    //     assert_eq!(
-    //         sg.get(first_child).unwrap().first_child,
-    //         sg.get_index(&"First Grandchild").unwrap().0
-    //     );
-    // }
 
     #[test]
     fn detach_basic() {
@@ -424,5 +490,37 @@ mod tests {
             ]
         );
         assert_eq!(third_child_tree.get_root().value, "Third Child");
+    }
+
+    #[test]
+    fn move_node() {
+        let mut sg = SceneGraph::new("Root");
+        let fg = sg.attach(sg.root_idx(), "First Child").unwrap();
+        sg.attach(fg, "First Grandchild").unwrap();
+        sg.attach(fg, "Second Grandchild").unwrap();
+        sg.attach(fg, "Third Grandchild").unwrap();
+        let second_child = sg.attach(sg.root_idx(), "Second Child").unwrap();
+
+        assert_eq!(
+            Vec::from_iter(sg.iter_children(fg).unwrap().cloned()),
+            vec!["First Grandchild", "Second Grandchild", "Third Grandchild",]
+        );
+
+        sg.move_node(fg, second_child).unwrap();
+
+        assert_eq!(
+            Vec::from_iter(sg.iter_children(sg.root_idx()).unwrap().cloned()),
+            vec!["Second Child",]
+        );
+
+        assert_eq!(
+            Vec::from_iter(sg.iter_children(fg).unwrap().cloned()),
+            vec!["First Grandchild", "Second Grandchild", "Third Grandchild",]
+        );
+
+        assert_eq!(
+            Vec::from_iter(sg.iter_children(second_child).unwrap().cloned()),
+            vec!["First Child",]
+        );
     }
 }

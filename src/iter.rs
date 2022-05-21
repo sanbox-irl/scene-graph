@@ -31,8 +31,10 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
         }
 
         if let Some(first_child) = stack_frame.current_child.children.map(|v| v.first) {
-            let new_stack = StackState::new(stack_frame.current_child, &self.sg.arena[first_child]);
-            self.stacks.push(new_stack);
+            self.stacks.push(StackState::new(
+                stack_frame.current_child,
+                &self.sg.arena[first_child],
+            ));
         }
 
         Some((&stack_frame.parent.value, &stack_frame.current_child.value))
