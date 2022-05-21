@@ -1,6 +1,4 @@
-use thunderdome::Index;
-
-use crate::{Node, NodeIndex, SceneGraph};
+use crate::{Children, Node, NodeIndex, SceneGraph};
 use std::collections::VecDeque;
 
 pub struct SceneGraphDetachIter<'a, T> {
@@ -18,14 +16,14 @@ impl<'a, T> SceneGraphDetachIter<'a, T> {
     pub(crate) fn new(
         sg: &'a mut SceneGraph<T>,
         head_index: NodeIndex,
-        first_child: Option<Index>,
+        children: Option<Children>,
     ) -> Self {
         let mut stacks = VecDeque::new();
-        if let Some(first_child) = first_child {
+        if let Some(children) = children {
             stacks.push_front(StackState::new(
                 head_index,
-                sg.arena.remove(first_child).unwrap(),
-                NodeIndex(first_child),
+                sg.arena.remove(children.first).unwrap(),
+                NodeIndex(children.first),
             ));
         };
         SceneGraphDetachIter { sg, stacks }
@@ -49,11 +47,11 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
         }
 
         // if there's a child, push it on the list first
-        if let Some(first_child) = stack_frame.current_child.first_child {
+        if let Some(children) = stack_frame.current_child.children {
             let new_stack = StackState::new(
                 stack_frame.current_child_idx,
-                self.sg.arena.remove(first_child).unwrap(),
-                NodeIndex(first_child),
+                self.sg.arena.remove(children.first).unwrap(),
+                NodeIndex(children.first),
             );
             self.stacks.push_front(new_stack);
         }

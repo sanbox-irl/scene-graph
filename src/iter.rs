@@ -8,7 +8,7 @@ pub struct SceneGraphIter<'a, T> {
 impl<'a, T> SceneGraphIter<'a, T> {
     pub(crate) fn new(sg: &'a SceneGraph<T>, root_node: &'a Node<T>) -> Self {
         let mut stacks = Vec::new();
-        if let Some(first_child) = root_node.first_child {
+        if let Some(first_child) = root_node.children.map(|v| v.first) {
             stacks.push(StackState::new(root_node, &sg.arena[first_child]));
         };
         SceneGraphIter { sg, stacks }
@@ -30,7 +30,7 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
             ));
         }
 
-        if let Some(first_child) = stack_frame.current_child.first_child {
+        if let Some(first_child) = stack_frame.current_child.children.map(|v| v.first) {
             let new_stack = StackState::new(stack_frame.current_child, &self.sg.arena[first_child]);
             self.stacks.push(new_stack);
         }

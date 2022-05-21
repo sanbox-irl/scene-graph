@@ -29,7 +29,7 @@ impl<T> SceneGraph<T> {
 
     /// Clears all nodes from `self`, leaving the `Root` in place. If you want to edit the root too,
     /// just make a new SceneGraph.
-    /// 
+    ///
     /// Note: this method maintains the underlying container's size, so future attaches could have
     /// some performance gains.
     pub fn clear(&mut self) {
@@ -54,18 +54,19 @@ impl<T> SceneGraph<T> {
             .ok_or(SceneGraphErr::ParentNodeNotFound)?;
 
         // fix the parent's last child
-        match parent.first_child {
-            Some(first_child) => {
-                let mut last_sibling = &mut self.arena[first_child];
+        match &mut parent.children {
+            Some(children) => {
+                let old_last = children.last;
+                children.last = new_idx;
 
-                while let Some(next_sibling) = last_sibling.next_sibling {
-                    last_sibling = &mut self.arena[next_sibling];
-                }
-
+                let mut last_sibling = &mut self.arena[old_last];
                 last_sibling.next_sibling = Some(new_idx);
             }
             None => {
-                parent.first_child = Some(new_idx);
+                parent.children = Some(Children {
+                    first: new_idx,
+                    last: new_idx,
+                });
             }
         };
 
@@ -81,7 +82,7 @@ impl<T> SceneGraph<T> {
         let mut helper_map = std::collections::HashMap::new();
         helper_map.insert(node_index, new_sg.root_idx);
 
-        for detached_node in SceneGraphDetachIter::new(self, node_index, node.first_child) {
+        for detached_node in SceneGraphDetachIter::new(self, node_index, node.children) {
             let parent_place = helper_map.get(&detached_node.parent_idx).unwrap();
             let new_idx = new_sg
                 .attach(NodeIndex(*parent_place), detached_node.node_value)
@@ -91,20 +92,49 @@ impl<T> SceneGraph<T> {
         }
 
         // fix up the parent if it was the first child...
-        let mut fixed_parent = false;
-        let mut fixed_sibling = false;
-        for (_, n) in self.arena.iter_mut() {
-            if n.first_child == Some(node_index.0) {
-                n.first_child = None;
-                fixed_parent = true;
-            } else if n.next_sibling == Some(node_index.0) {
-                n.next_sibling = node.next_sibling;
-                fixed_sibling = true;
+        let parent_index = self.parent(node_index).unwrap();
+        let mut parent_children = self.arena[parent_index.0].children.unwrap();
+
+        if parent_children.first == parent_children.last && parent_children.first == node_index.0 {
+            self.arena[parent_index.0].children = None;
+        } else {
+            // extremely hard to follow the logic of this unwrap here, but if this branch is taken,
+            // then we're *never* the last child, which means we have a sibling.
+            if parent_children.first == node_index.0 {
+                parent_children.first = node.next_sibling.unwrap();
             }
 
-            if fixed_parent && fixed_sibling {
-                break;
+            // fix up the next children...
+            let mut last_valid_child = parent_children.first;
+            loop {
+                let sibling = self.arena.get_mut(last_valid_child).unwrap();
+                if sibling.next_sibling == Some(node_index.0) {
+                    sibling.next_sibling = node.next_sibling;
+
+                    // pop over our deletion or break
+                    match node.next_sibling {
+                        Some(next_sibling) => {
+                            last_valid_child = next_sibling;
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+
+                if sibling.next_sibling.is_none() {
+                    break;
+                }
+
+                last_valid_child = sibling.next_sibling.unwrap();
             }
+
+            if parent_children.last == node_index.0 {
+                parent_children.last = last_valid_child;
+            }
+
+            // finally, dump our updated parent children back
+            self.arena[parent_index.0].children = Some(parent_children);
         }
 
         Some(new_sg)
@@ -115,15 +145,43 @@ impl<T> SceneGraph<T> {
     }
 
     /// Gets a given node based on `NodeIndex`.
-    ///
-    /// **Warning:** `NodeIndex` is not stable across `attach` and `remove`, and so,
-    /// you should consider using `get_by_value` instead.
     pub fn get(&self, node_index: NodeIndex) -> Option<&Node<T>> {
         self.arena.get(node_index.0)
     }
 
+    pub fn root(&self) -> &T {
+        &self.get_root().value
+    }
+
+    pub fn root_mut(&mut self) -> &mut T {
+        &mut self.arena.get_mut(self.root_idx).unwrap().value
+    }
+
     pub fn get_root(&self) -> &Node<T> {
         self.get(self.root_idx()).unwrap()
+    }
+
+    /// Returns the parent NodeIndex of a given Node.
+    ///
+    /// This operation is O(N) over the number of nodes in the SceneGraph.
+    pub fn parent(&self, node_index: NodeIndex) -> Option<NodeIndex> {
+        for (i, v) in self.arena.iter() {
+            if let Some(children) = v.children {
+                let mut child = children.first;
+                loop {
+                    if child == node_index.0 {
+                        return Some(NodeIndex(i));
+                    } else if child == children.last {
+                        break;
+                    } else {
+                        // we know it has a next sibling always...
+                        child = self.arena[child].next_sibling.unwrap();
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     // /// Iterate mutably over the Scene Graph in a depth first traversal.
@@ -140,7 +198,7 @@ impl<T> SceneGraph<T> {
     ///
     /// Note: the `root` will never be detached.
     pub fn iter_detach(&mut self) -> SceneGraphDetachIter<'_, T> {
-        SceneGraphDetachIter::new(self, NodeIndex(self.root_idx), self.get_root().first_child)
+        SceneGraphDetachIter::new(self, NodeIndex(self.root_idx), self.get_root().children)
     }
 }
 
@@ -187,16 +245,22 @@ impl<'a, T> IntoIterator for &'a SceneGraph<T> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Node<T> {
     pub value: T,
-    first_child: Option<Index>,
+    children: Option<Children>,
     next_sibling: Option<Index>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct Children {
+    first: Index,
+    last: Index,
 }
 
 impl<T> std::fmt::Debug for Node<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
-            .field("first_child", &self.first_child)
+            .field("children", &self.children)
             .field("next_sibling", &self.next_sibling)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 
@@ -204,8 +268,8 @@ impl<T> Node<T> {
     pub fn new(value: T) -> Self {
         Self {
             value,
-            first_child: None,
             next_sibling: None,
+            children: None,
         }
     }
 }
@@ -266,19 +330,20 @@ mod tests {
     fn attach_internals() {
         let mut sg = SceneGraph::new("Root");
 
-        assert_eq!(sg.get_root().first_child, None);
+        assert_eq!(sg.get_root().children, None);
 
         let root_idx = sg.root_idx();
 
         let first_idx = sg.attach(root_idx, "First Child").unwrap();
 
         // assert_eq!(sg.get_root().num_children, 1);
-        assert_eq!(sg.get_root().first_child, Some(first_idx.0));
+        assert_eq!(sg.get_root().children.unwrap().first, first_idx.0);
+        assert_eq!(sg.get_root().children.unwrap().last, first_idx.0);
 
-        sg.attach(root_idx, "Second Child").unwrap();
+        let second_idx = sg.attach(root_idx, "Second Child").unwrap();
 
-        // assert_eq!(sg.get_root().num_children, 2);
-        assert_eq!(sg.get_root().first_child, Some(first_idx.0));
+        assert_eq!(sg.get_root().children.unwrap().first, first_idx.0);
+        assert_eq!(sg.get_root().children.unwrap().last, second_idx.0);
     }
 
     // #[test]

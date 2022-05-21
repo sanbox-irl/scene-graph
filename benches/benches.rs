@@ -11,6 +11,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         })
     });
 
+    // for v in input_node.iter() {
+    //     sg.attach(sg.root_idx(), v).unwrap();
+    // }
+
+    c.bench_function("add node", |b| {
+        b.iter(|| {
+            sg.attach(sg.root_idx(), "Finality").unwrap();
+        })
+    });
+
+    sg.clear();
     for v in input_node.iter() {
         sg.attach(sg.root_idx(), v).unwrap();
     }
@@ -18,7 +29,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("add/remove 50000th node", |b| {
         b.iter(|| {
             let idx = sg.attach(sg.root_idx(), "Finality").unwrap();
-            sg.detach(idx);
+            sg.detach(idx).unwrap();
         })
     });
 
