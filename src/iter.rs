@@ -7,11 +7,10 @@ pub struct SceneGraphIter<'a, T> {
 }
 
 impl<'a, T> SceneGraphIter<'a, T> {
-    pub fn new(sg: &'a SceneGraph<T>) -> Self {
+    pub(crate) fn new(sg: &'a SceneGraph<T>, root_node: &'a Node<T>) -> Self {
         let mut stacks = VecDeque::new();
-        let head_node = sg.get_root();
-        if let Some(first_child) = head_node.first_child {
-            stacks.push_front(StackState::new(head_node, &sg.arena[first_child]));
+        if let Some(first_child) = root_node.first_child {
+            stacks.push_front(StackState::new(root_node, &sg.arena[first_child]));
         };
         SceneGraphIter { sg, stacks }
     }

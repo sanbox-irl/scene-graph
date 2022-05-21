@@ -1,9 +1,11 @@
 use std::cmp::Eq;
 use thunderdome::{Arena, Index};
 
+mod detatch_iter;
 mod iter;
 // mod iter_mut;
 
+pub use detatch_iter::{DetachedNode, SceneGraphDetachIter};
 pub use iter::SceneGraphIter;
 // pub use iter_mut::SceneGraphIterMut;
 
@@ -33,14 +35,13 @@ impl<T> SceneGraph<T> {
         self.arena.insert_at_slot(0, Node::new(root.1.value));
     }
 
-    /// Attaches a node to another node, returning a handle to it.
-    #[cfg(not(feature = "deny_double"))]
-    pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
-        self.attach_inner(parent, value)
+    /// Checks if the SceneGraph contains only the root.
+    pub fn is_empty(&self) -> bool {
+        self.arena.len() == 1
     }
 
-    /// This is the inner attach!
-    fn attach_inner(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
+    /// Attaches a node to another node, returning a handle to it.
+    pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
         // push that node!
         let new_idx = self.arena.insert(Node::new(value));
 
@@ -68,28 +69,42 @@ impl<T> SceneGraph<T> {
         Ok(NodeIndex(new_idx))
     }
 
-    /// Removes a given node from the scene graph.
-    ///
-    /// ## Panics
-    /// Panics if index is out of bounds.
-    pub fn remove(&mut self, node_index: NodeIndex) -> Node<T> {
-        let node = self.arena.remove(node_index.0);
+    /// Removes a given node from the scene graph, returning a new SceneGraph where the given
+    /// node is now the *root*.
+    pub fn detach(&mut self, node_index: NodeIndex) -> Option<SceneGraph<T>> {
+        let node = self.arena.remove(node_index.0)?;
+        let mut new_sg = SceneGraph::new(node.value);
 
-        // // decrement everyone
-        // // now we need to increment *everyone*
-        // for node in self.arena.iter_mut() {
-        //     // check parent...
-        //     if (node.first_child..(node.first_child + node.num_children as usize))
-        //         .contains(&node_index.0)
-        //     {
-        //         node.num_children -= 1;
-        //     } else if node.first_child > node_index.0 {
-        //         node.first_child -= 1;
-        //     }
-        // }
+        let mut helper_map = std::collections::HashMap::new();
+        helper_map.insert(node_index, new_sg.root_idx);
 
-        todo!()
-        // node
+        for detached_node in SceneGraphDetachIter::new(self, node_index, node.first_child) {
+            let parent_place = helper_map.get(&detached_node.parent_idx).unwrap();
+            let new_idx = new_sg
+                .attach(NodeIndex(*parent_place), detached_node.node_value)
+                .unwrap();
+
+            helper_map.insert(detached_node.node_idx, new_idx.0);
+        }
+
+        // fix up the parent if it was the first child...
+        let mut fixed_parent = false;
+        let mut fixed_sibling = false;
+        for (_, n) in self.arena.iter_mut() {
+            if n.first_child == Some(node_index.0) {
+                n.first_child = None;
+                fixed_parent = true;
+            } else if n.next_sibling == Some(node_index.0) {
+                n.next_sibling = node.next_sibling;
+                fixed_sibling = true;
+            }
+
+            if fixed_parent && fixed_sibling {
+                break;
+            }
+        }
+
+        Some(new_sg)
     }
 
     pub fn root_idx(&self) -> NodeIndex {
@@ -115,7 +130,14 @@ impl<T> SceneGraph<T> {
 
     /// Iterate immutably over the Scene Graph in a depth first traversal.
     pub fn iter(&self) -> SceneGraphIter<'_, T> {
-        SceneGraphIter::new(self)
+        SceneGraphIter::new(self, self.get_root())
+    }
+
+    /// Iterate while detaching over the Scene Graph in a depth first traversal.
+    ///
+    /// Note: the `root` will never be detached.
+    pub fn iter_detach(&mut self) -> SceneGraphDetachIter<'_, T> {
+        SceneGraphDetachIter::new(self, NodeIndex(self.root_idx), self.get_root().first_child)
     }
 }
 
@@ -136,18 +158,6 @@ impl<T: PartialEq> SceneGraph<T> {
         let idx = self.get_index(value)?;
 
         self.get(idx)
-    }
-
-    /// Attaches a node to another node, returning a handle to it.
-    #[cfg(feature = "deny_double")]
-    pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
-        for v in self.arena.iter() {
-            if v.value.eq(&value) {
-                return Err(SceneGraphErr::NodeAlreadyPresent);
-            }
-        }
-
-        self.attach_inner(parent, value)
     }
 }
 
@@ -197,7 +207,7 @@ impl<T> Node<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 #[repr(transparent)]
 pub struct NodeIndex(thunderdome::Index);
 
@@ -221,15 +231,6 @@ mod tests {
         let mut out = vec![];
         for (_, v) in sg.iter() {
             out.push(*v);
-        }
-
-        out
-    }
-
-    fn get_arena_values(sg: &SceneGraph<&'static str>) -> Vec<&'static str> {
-        let mut out = vec![];
-        for (_, v) in sg.arena.iter() {
-            out.push(v.value);
         }
 
         out
@@ -311,24 +312,33 @@ mod tests {
     // }
 
     #[test]
-    fn remove() {
+    fn detach_basic() {
         let mut sg = SceneGraph::new("Root");
         sg.attach(sg.root_idx(), "First Child").unwrap();
         let second_child = sg.attach(sg.root_idx(), "Second Child").unwrap();
-        sg.attach(sg.root_idx(), "Third Child").unwrap();
+        let third_child = sg.attach(sg.root_idx(), "Third Child").unwrap();
 
-        sg.remove(second_child);
+        let second_child = sg.detach(second_child).unwrap();
+        assert_eq!(second_child.get_root().value, "Second Child");
 
         assert_eq!(get_values(&sg), vec!["First Child", "Third Child"]);
 
-        let third_child = sg.get_index(&"Third Child").unwrap();
-        sg.attach(third_child, "First Grandchild").unwrap();
-        let third_child = sg.get_index(&"Third Child").unwrap();
-        sg.remove(third_child);
+        let g = sg.attach(third_child, "First Grandchild").unwrap();
+        sg.attach(g, "Second Grandchild").unwrap();
+        let g_3 = sg.attach(g, "Third Grandchild").unwrap();
+        sg.attach(g_3, "First Greatgrandchild").unwrap();
+
+        let third_child_tree = sg.detach(third_child).unwrap();
         assert_eq!(get_values(&sg), vec!["First Child"]);
         assert_eq!(
-            get_arena_values(&sg),
-            vec!["Root", "First Child", "First Grandchild"]
+            get_values(&third_child_tree),
+            vec![
+                "First Grandchild",
+                "Second Grandchild",
+                "Third Grandchild",
+                "First Greatgrandchild"
+            ]
         );
+        assert_eq!(third_child_tree.get_root().value, "Third Child");
     }
 }
