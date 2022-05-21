@@ -4,18 +4,15 @@ use thunderdome::{Arena, Index};
 mod child_iter;
 mod detatch_iter;
 mod iter;
-// mod iter_mut;
 
 pub use child_iter::SceneGraphChildIter;
 pub use detatch_iter::{DetachedNode, SceneGraphDetachIter};
 pub use iter::SceneGraphIter;
 
-// pub use iter_mut::SceneGraphIterMut;
-
 #[derive(Debug)]
 pub struct SceneGraph<T> {
-    root_idx: Index,
     arena: Arena<Node<T>>,
+    root_idx: Index,
 }
 
 impl<T> SceneGraph<T> {
@@ -25,8 +22,8 @@ impl<T> SceneGraph<T> {
         let mut arena = Arena::new();
         let root_index = arena.insert(Node::new(root, None));
         Self {
-            root_idx: root_index,
             arena,
+            root_idx: root_index,
         }
     }
 
@@ -353,15 +350,19 @@ impl<'a, T> IntoIterator for &'a SceneGraph<T> {
     }
 }
 
-// impl<'a, T> IntoIterator for &'a mut SceneGraph<T> {
-//     type Item = &'a mut T;
+impl<T> std::ops::Index<NodeIndex> for SceneGraph<T> {
+    type Output = T;
 
-//     type IntoIter = SceneGraphIterMut<'a, T>;
+    fn index(&self, index: NodeIndex) -> &Self::Output {
+        &self.arena[index.0].value
+    }
+}
 
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.iter_mut()
-//     }
-// }
+impl<T> std::ops::IndexMut<NodeIndex> for SceneGraph<T> {
+    fn index_mut(&mut self, index: NodeIndex) -> &mut Self::Output {
+        &mut self.arena[index.0].value
+    }
+}
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Node<T> {
