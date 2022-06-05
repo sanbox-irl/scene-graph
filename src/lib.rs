@@ -43,6 +43,13 @@ impl<T> SceneGraph<T> {
         self.arena.len() == 1
     }
 
+    /// Attaches a node to the root node, returning a handle to it.
+    ///
+    /// This is a convenience method which will never fail.
+    pub fn attach_at_root(&mut self, value: T) -> NodeIndex {
+        self.attach(self.root_idx(), value).unwrap()
+    }
+
     /// Attaches a node to another node, returning a handle to it.
     pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
         // push that node!
