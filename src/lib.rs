@@ -380,6 +380,44 @@ pub struct Node<T> {
     next_sibling: Option<Index>,
 }
 
+impl<T> Node<T> {
+    /// Returns true if the node has is the root node or not.
+    ///
+    /// Note that this is the inverse of `has_parent`.
+    pub fn is_root(&self) -> bool {
+        self.parent.is_none()
+    }
+
+    /// Returns true if the node has a parent.
+    ///
+    /// Note that this is the inverse of `is_root`.
+    pub fn has_parent(&self) -> bool {
+        self.parent.is_some()
+    }
+
+    /// Returns true if this node has children.
+    pub fn has_children(&self) -> bool {
+        self.children.is_some()
+    }
+
+    /// Iterate directly over only the *direct* children of `parent_index`.
+    ///
+    /// For example, given a graph:
+    /// ROOT:
+    ///     A
+    ///         B
+    ///         C
+    ///             D
+    /// using `iter_children` and passing in the `parent_index` for `A` will only yield `B`
+    /// and `C`, *not* `D`. For that kind of depth first traversal, using `iter_on_node`.
+    ///
+    /// Note: passing in a SceneGraph of a different kind than this node belongs to (but of the same type)
+    /// will create logic errors or panics.
+    pub fn iter_children<'a>(&'a self, sg: &'a SceneGraph<T>) -> SceneGraphChildIter<'a, T> {
+        SceneGraphChildIter::new(sg, self)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Children {
     first: Index,
