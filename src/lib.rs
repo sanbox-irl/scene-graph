@@ -4,10 +4,12 @@ use thunderdome::{Arena, Index};
 mod child_iter;
 mod detatch_iter;
 mod iter;
+mod iter_mut;
 
 pub use child_iter::SceneGraphChildIter;
 pub use detatch_iter::{DetachedNode, SceneGraphDetachIter};
 pub use iter::SceneGraphIter;
+pub use iter_mut::SceneGraphIterMut;
 
 #[derive(Debug)]
 pub struct SceneGraph<T> {
@@ -211,6 +213,11 @@ impl<T> SceneGraph<T> {
     /// Iterate immutably over the Scene Graph in a depth first traversal.
     pub fn iter(&self) -> SceneGraphIter<'_, T> {
         SceneGraphIter::new(self, self.get_root())
+    }
+
+    /// Iterate mutably over the Scene Graph in a depth first traversal.
+    pub fn iter_mut(&mut self) -> SceneGraphIterMut<'_, T> {
+        SceneGraphIterMut::new(self, self.root_idx)
     }
 
     /// Iterate immutably over the Scene Graph in a depth first traversal.
