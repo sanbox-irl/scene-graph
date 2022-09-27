@@ -1,6 +1,6 @@
 use thunderdome::Index;
 
-use crate::{Node, SceneGraph};
+use crate::{Node, NodeIndex, SceneGraph};
 
 pub struct SceneGraphIterMut<'a, T> {
     sg: &'a mut SceneGraph<T>,
@@ -8,9 +8,10 @@ pub struct SceneGraphIterMut<'a, T> {
 }
 
 impl<'a, T> SceneGraphIterMut<'a, T> {
-    pub(crate) fn new(sg: &'a mut SceneGraph<T>, root_node_idx: Index) -> Self {
+    pub(crate) fn new(sg: &'a mut SceneGraph<T>, root_node_idx: NodeIndex) -> Self {
         let mut stacks = Vec::new();
-        if let Some(first_child) = sg.arena[root_node_idx].children.map(|v| v.first) {
+
+        if let Some(first_child) = sg.get_children(root_node_idx).map(|v| v.first) {
             stacks.push(StackState::new(root_node_idx, first_child));
         };
         SceneGraphIterMut { sg, stacks }
@@ -24,20 +25,27 @@ impl<'a, T> Iterator for SceneGraphIterMut<'a, T> {
         // if we're out of stack frames, we die here
         let stack_frame = self.stacks.pop()?;
 
-        let (parent, child) = self
-            .sg
-            .arena
-            .get2_mut(stack_frame.parent, stack_frame.current_child);
+        let (parent, current_child) = match stack_frame.parent {
+            NodeIndex::Root => {
+                let parent = &mut self.sg.root;
+
+                let child = self.sg.arena.get_mut(stack_frame.current_child).unwrap();
+
+                (parent, child)
+            }
+            NodeIndex::Branch(idx) => {
+                let (parent, current_child) =
+                    self.sg.arena.get2_mut(idx, stack_frame.current_child);
+
+                (&mut parent.unwrap().value, current_child.unwrap())
+            }
+        };
 
         // safety:  this is a lifetime extension, which i know is valid because get2_mut
         // panics when we pass in two of the same things, and this iterator requires `&mut SG`
         // to call `next`.
-        let (parent, current_child): (&mut Node<T>, &mut Node<T>) = unsafe {
-            let parent = parent.unwrap();
-            let current_child = child.unwrap();
-
-            (&mut *(parent as *mut _), &mut *(current_child as *mut _))
-        };
+        let (parent, current_child): (&mut T, &mut Node<T>) =
+            unsafe { (&mut *(parent as *mut _), &mut *(current_child as *mut _)) };
 
         // if there's a sibling, push it onto the to do list!
         if let Some(next_sibling) = current_child.next_sibling {
@@ -46,22 +54,24 @@ impl<'a, T> Iterator for SceneGraphIterMut<'a, T> {
         }
 
         if let Some(first_child) = current_child.children.map(|v| v.first) {
-            self.stacks
-                .push(StackState::new(stack_frame.current_child, first_child));
+            self.stacks.push(StackState::new(
+                NodeIndex::Branch(stack_frame.current_child),
+                first_child,
+            ));
         }
 
-        Some((&mut parent.value, &mut current_child.value))
+        Some((parent, &mut current_child.value))
     }
 }
 
 #[derive(Debug)]
 struct StackState {
-    parent: Index,
+    parent: NodeIndex,
     current_child: Index,
 }
 
 impl StackState {
-    fn new(parent: Index, first_child: Index) -> Self {
+    fn new(parent: NodeIndex, first_child: Index) -> Self {
         Self {
             parent,
             current_child: first_child,
@@ -83,7 +93,7 @@ mod tests {
     #[test]
     fn normal_iteration() {
         let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
+        let root_idx = NodeIndex::Root;
         sg.attach(root_idx, "First Child").unwrap();
 
         let second_child = sg.attach(root_idx, "Second Child").unwrap();
@@ -98,7 +108,7 @@ mod tests {
     #[test]
     fn stagger_iteration() {
         let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
+        let root_idx = NodeIndex::Root;
         let child = sg.attach(root_idx, "First Child").unwrap();
         sg.attach(child, "Second Child").unwrap();
 
@@ -111,7 +121,7 @@ mod tests {
     #[test]
     fn single_iteration() {
         let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
+        let root_idx = NodeIndex::Root;
         sg.attach(root_idx, "First Child").unwrap();
 
         assert_eq!(

@@ -6,8 +6,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut sg = SceneGraph::new("Root");
     c.bench_function("add/remove one node", |b| {
         b.iter(|| {
-            let idx = sg.attach(sg.root_idx(), "single boy").unwrap();
-            sg.detach(idx).unwrap();
+            let idx = sg.attach_at_root("single boy");
+            sg.remove(idx);
         })
     });
 
@@ -17,25 +17,25 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("add node", |b| {
         b.iter(|| {
-            sg.attach(sg.root_idx(), "Finality").unwrap();
+            sg.attach_at_root("Finality");
         })
     });
 
     sg.clear();
     for v in input_node.iter() {
-        sg.attach(sg.root_idx(), v).unwrap();
+        sg.attach_at_root(v);
     }
 
     c.bench_function("add/remove 50000th node", |b| {
         b.iter(|| {
-            let idx = sg.attach(sg.root_idx(), "Finality").unwrap();
-            sg.detach(idx).unwrap();
+            let idx = sg.attach_at_root("Finality");
+            sg.remove(idx);
         })
     });
 
     sg.clear();
     for v in input_node.iter() {
-        sg.attach(sg.root_idx(), v).unwrap();
+        sg.attach_at_root(v);
     }
 
     c.bench_function("iter 50k", |b| {
@@ -49,7 +49,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     sg.clear();
 
     for v in input_node.iter().take(64) {
-        sg.attach(sg.root_idx(), v).unwrap();
+        sg.attach_at_root(v);
     }
 
     c.bench_function("iter 64", |b| {

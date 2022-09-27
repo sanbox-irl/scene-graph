@@ -1,26 +1,24 @@
-use thunderdome::Index;
-
-use crate::{Node, NodeIndex, SceneGraph};
+use crate::{Children, NodeIndex, SceneGraph};
 
 pub struct SceneGraphChildIter<'a, T> {
     sg: &'a SceneGraph<T>,
-    current_node: Option<(Index, &'a Node<T>)>,
+    current_node: Option<thunderdome::Index>,
 }
 
 impl<'a, T> SceneGraphChildIter<'a, T> {
-    pub(crate) fn new(sg: &'a SceneGraph<T>, parent_node: &'a Node<T>) -> Self {
-        SceneGraphChildIter {
-            sg,
-            current_node: parent_node
-                .children
-                .map(|v| (v.first, sg.arena.get(v.first).unwrap())),
-        }
+    pub(crate) fn new(sg: &'a SceneGraph<T>, root_index: NodeIndex) -> Self {
+        let children = match root_index {
+            NodeIndex::Root => sg.root_children.as_ref(),
+            NodeIndex::Branch(idx) => sg.arena[idx].children.as_ref(),
+        };
+
+        Self::with_children(sg, children)
     }
 
-    pub fn with_node(self) -> SceneGraphChildIterWithNode<'a, T> {
-        SceneGraphChildIterWithNode {
-            sg: self.sg,
-            current_node: self.current_node,
+    pub(crate) fn with_children(sg: &'a SceneGraph<T>, children: Option<&'a Children>) -> Self {
+        SceneGraphChildIter {
+            sg,
+            current_node: children.map(|v| v.first),
         }
     }
 }
@@ -29,34 +27,10 @@ impl<'a, T> Iterator for SceneGraphChildIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let yield_me = self.current_node?;
+        let yield_me = self.sg.arena.get(self.current_node?).unwrap();
+        self.current_node = yield_me.next_sibling;
 
-        self.current_node = yield_me
-            .1
-            .next_sibling
-            .map(|v| (v, self.sg.arena.get(v).unwrap()));
-
-        Some(&yield_me.1.value)
-    }
-}
-
-pub struct SceneGraphChildIterWithNode<'a, T> {
-    sg: &'a SceneGraph<T>,
-    current_node: Option<(Index, &'a Node<T>)>,
-}
-
-impl<'a, T> Iterator for SceneGraphChildIterWithNode<'a, T> {
-    type Item = (NodeIndex, &'a Node<T>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let yield_me = self.current_node?;
-
-        self.current_node = yield_me
-            .1
-            .next_sibling
-            .map(|v| (v, self.sg.arena.get(v).unwrap()));
-
-        Some((NodeIndex(yield_me.0), yield_me.1))
+        Some(&yield_me.value)
     }
 }
 
@@ -69,7 +43,7 @@ mod tests {
         let scene_graph = SceneGraph::new("Root");
 
         assert!(scene_graph
-            .iter_children(scene_graph.root_idx())
+            .iter_children(NodeIndex::Root)
             .unwrap()
             .next()
             .is_none());
@@ -78,7 +52,7 @@ mod tests {
     #[test]
     fn normal_iteration() {
         let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
+        let root_idx = NodeIndex::Root;
         let fg = sg.attach(root_idx, "First Child").unwrap();
         sg.attach(fg, "First Grandchild").unwrap();
         sg.attach(fg, "Second Grandchild").unwrap();

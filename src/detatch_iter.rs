@@ -1,20 +1,14 @@
-use crate::{Children, Node, NodeIndex, SceneGraph};
+use crate::{Children, Node, NodeIndex};
 use std::collections::VecDeque;
 
 pub struct SceneGraphDetachIter<'a, T> {
-    sg: &'a mut SceneGraph<T>,
+    sg: &'a mut thunderdome::Arena<Node<T>>,
     stacks: VecDeque<StackState<T>>,
-}
-
-pub struct DetachedNode<T> {
-    pub parent_idx: NodeIndex,
-    pub node_idx: NodeIndex,
-    pub node_value: T,
 }
 
 impl<'a, T> SceneGraphDetachIter<'a, T> {
     pub(crate) fn new(
-        sg: &'a mut SceneGraph<T>,
+        sg: &'a mut thunderdome::Arena<Node<T>>,
         head_index: NodeIndex,
         children: Option<Children>,
     ) -> Self {
@@ -22,8 +16,8 @@ impl<'a, T> SceneGraphDetachIter<'a, T> {
         if let Some(children) = children {
             stacks.push_front(StackState::new(
                 head_index,
-                sg.arena.remove(children.first).unwrap(),
-                NodeIndex(children.first),
+                sg.remove(children.first).unwrap(),
+                NodeIndex::Branch(children.first),
             ));
         };
         SceneGraphDetachIter { sg, stacks }
@@ -41,8 +35,8 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
         if let Some(next_sibling) = stack_frame.current_child.next_sibling {
             self.stacks.push_front(StackState::new(
                 stack_frame.parent,
-                self.sg.arena.remove(next_sibling).unwrap(),
-                NodeIndex(next_sibling),
+                self.sg.remove(next_sibling).unwrap(),
+                NodeIndex::Branch(next_sibling),
             ));
         }
 
@@ -50,8 +44,8 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
         if let Some(children) = stack_frame.current_child.children {
             let new_stack = StackState::new(
                 stack_frame.current_child_idx,
-                self.sg.arena.remove(children.first).unwrap(),
-                NodeIndex(children.first),
+                self.sg.remove(children.first).unwrap(),
+                NodeIndex::Branch(children.first),
             );
             self.stacks.push_front(new_stack);
         }
@@ -61,6 +55,21 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
             node_idx: stack_frame.current_child_idx,
             node_value: stack_frame.current_child.value,
         })
+    }
+}
+
+pub struct DetachedNode<T> {
+    pub parent_idx: NodeIndex,
+    pub node_idx: NodeIndex,
+    pub node_value: T,
+}
+
+impl<T> std::fmt::Debug for DetachedNode<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DetachedNode")
+            .field("parent_idx", &self.parent_idx)
+            .field("node_idx", &self.node_idx)
+            .finish()
     }
 }
 
@@ -92,6 +101,8 @@ impl<T> StackState<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::SceneGraph;
+
     use super::*;
 
     #[test]
@@ -104,7 +115,7 @@ mod tests {
     #[test]
     fn detach_iteration() {
         let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
+        let root_idx = NodeIndex::Root;
         sg.attach(root_idx, "First Child").unwrap();
 
         let second_child = sg.attach(root_idx, "Second Child").unwrap();
@@ -121,7 +132,7 @@ mod tests {
     #[test]
     fn stagger_detach_iteration() {
         let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
+        let root_idx = NodeIndex::Root;
         let child = sg.attach(root_idx, "First Child").unwrap();
         sg.attach(child, "Second Child").unwrap();
 
@@ -135,7 +146,7 @@ mod tests {
     #[test]
     fn single_detach_iteration() {
         let mut sg = SceneGraph::new("Root");
-        let root_idx = sg.root_idx();
+        let root_idx = NodeIndex::Root;
         sg.attach(root_idx, "First Child").unwrap();
 
         assert_eq!(
