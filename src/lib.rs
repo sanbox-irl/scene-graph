@@ -206,6 +206,15 @@ impl<T> SceneGraph<T> {
         }
     }
 
+    /// Gets a given node based on `NodeIndex`. Note that the `Root` always returns `None`,
+    /// as it is not a true node. Use `get_children` to generically get children.
+    pub fn get_mut(&mut self, node_index: NodeIndex) -> Option<&mut Node<T>> {
+        match node_index {
+            NodeIndex::Root => None,
+            NodeIndex::Branch(idx) => self.arena.get_mut(idx),
+        }
+    }
+
     /// Gets a given node based on `NodeIndex`.
     pub fn get_children(&self, node_index: NodeIndex) -> Option<&Children> {
         match node_index {
@@ -447,6 +456,11 @@ impl<T> Node<T> {
     pub fn iter_children<'a>(&'a self, sg: &'a SceneGraph<T>) -> SceneGraphChildIter<'a, T> {
         SceneGraphChildIter::with_children(sg, self.children.as_ref())
     }
+
+    /// Returns the index of the parent.
+    pub fn parent(&self) -> NodeIndex {
+        self.parent
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -490,6 +504,14 @@ impl NodeIndex {
         } else {
             None
         }
+    }
+
+    /// Returns `true` if the node index is [`Root`].
+    ///
+    /// [`Root`]: NodeIndex::Root
+    #[must_use]
+    pub fn is_root(&self) -> bool {
+        matches!(self, Self::Root)
     }
 }
 
