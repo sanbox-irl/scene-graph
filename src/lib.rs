@@ -197,6 +197,14 @@ impl<T> SceneGraph<T> {
         self.fix_parent(node.next_sibling, node.last_sibling, node.parent, index);
     }
 
+    /// Returns `true` is the given `node_index` is valid.
+    pub fn contains(&self, node_index: NodeIndex) -> bool {
+        match node_index {
+            NodeIndex::Root => true,
+            NodeIndex::Branch(idx) => self.arena.contains(idx),
+        }
+    }
+
     /// Gets a given node based on `NodeIndex`. Note that the `Root` always returns `None`,
     /// as it is not a true node. Use `get_children` to generically get children.
     pub fn get(&self, node_index: NodeIndex) -> Option<&Node<T>> {
@@ -253,10 +261,12 @@ impl<T> SceneGraph<T> {
         self.iter_on_node(NodeIndex::Root).unwrap()
     }
 
-    // / Iterate mutably over the Scene Graph in a depth first traversal.
-    // pub fn iter_mut(&mut self) -> SceneGraphIterMut<'_, T> {
-    // SceneGraphIterMut::new(self, self.root_idx)
-    // }
+    /// Iterate immutably over the Scene Graph out of order. This is, of course, fast.
+    pub fn iter_out_of_order(&self) -> impl Iterator<Item = (NodeIndex, &T)> {
+        self.arena
+            .iter()
+            .map(|(k, v)| (NodeIndex::Branch(k), &v.value))
+    }
 
     /// Iterate immutably over the Scene Graph in a depth first traversal.
     pub fn iter_on_node(
