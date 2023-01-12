@@ -188,8 +188,7 @@ impl<T> SceneGraph<T> {
             NodeIndex::Branch(index) => index,
         };
 
-        let node = self.arena.remove(index);
-        let node = if let Some(node) = node { node } else { return };
+        let Some(node) = self.arena.remove(index) else { return };
 
         // detach em all!
         for _v in SceneGraphDetachIter::new(&mut self.arena, node_index, node.children) {}
