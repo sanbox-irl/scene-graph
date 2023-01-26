@@ -56,7 +56,7 @@ impl<T> SceneGraph<T> {
     }
 
     /// Attaches a node to another node, returning a handle to it.
-    pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, SceneGraphErr> {
+    pub fn attach(&mut self, parent: NodeIndex, value: T) -> Result<NodeIndex, ParentNodeNotFound> {
         // push that node!
         let new_idx = self.arena.insert(Node::new(value, parent));
         self.place_node(parent, new_idx)?;
@@ -70,7 +70,7 @@ impl<T> SceneGraph<T> {
         &mut self,
         parent: NodeIndex,
         mut other_graph: SceneGraph<T>,
-    ) -> Result<NodeIndex, SceneGraphErr> {
+    ) -> Result<NodeIndex, ParentNodeNotFound> {
         let other_root = other_graph.root;
         let new_root_idx = self.attach(parent, other_root)?;
 
@@ -141,12 +141,12 @@ impl<T> SceneGraph<T> {
         &mut self,
         moving_node_idx: NodeIndex,
         new_parent: NodeIndex,
-    ) -> Result<(), SceneGraphErr> {
+    ) -> Result<(), NodeDoesNotExist> {
         let moving_node_idx = match moving_node_idx {
-            NodeIndex::Root => return Err(SceneGraphErr::NodeDoesNotExist),
+            NodeIndex::Root => return Err(NodeDoesNotExist),
             NodeIndex::Branch(idx) => {
                 if !self.arena.contains(idx) {
-                    return Err(SceneGraphErr::NodeDoesNotExist);
+                    return Err(NodeDoesNotExist);
                 }
 
                 idx
@@ -155,7 +155,7 @@ impl<T> SceneGraph<T> {
 
         if let NodeIndex::Branch(idx) = new_parent {
             if !self.arena.contains(idx) {
-                return Err(SceneGraphErr::NodeDoesNotExist);
+                return Err(NodeDoesNotExist);
             }
         }
 
@@ -271,11 +271,11 @@ impl<T> SceneGraph<T> {
     pub fn iter_on_node(
         &self,
         node_index: NodeIndex,
-    ) -> Result<SceneGraphIter<'_, T>, SceneGraphErr> {
+    ) -> Result<SceneGraphIter<'_, T>, NodeDoesNotExist> {
         let (parent_value, children) = match node_index {
             NodeIndex::Root => (&self.root, self.root_children.as_ref()),
             NodeIndex::Branch(idx) => {
-                let node = self.arena.get(idx).ok_or(SceneGraphErr::NodeDoesNotExist)?;
+                let node = self.arena.get(idx).ok_or(NodeDoesNotExist)?;
 
                 (&node.value, node.children.as_ref())
             }
@@ -304,9 +304,9 @@ impl<T> SceneGraph<T> {
     pub fn iter_children(
         &self,
         parent_index: NodeIndex,
-    ) -> Result<SceneGraphChildIter<'_, T>, SceneGraphErr> {
+    ) -> Result<SceneGraphChildIter<'_, T>, NodeDoesNotExist> {
         if let NodeIndex::Branch(idx) = parent_index {
-            self.arena.get(idx).ok_or(SceneGraphErr::NodeDoesNotExist)?;
+            self.arena.get(idx).ok_or(NodeDoesNotExist)?;
         }
 
         Ok(SceneGraphChildIter::new(self, parent_index))
@@ -317,16 +317,12 @@ impl<T> SceneGraph<T> {
         &mut self,
         new_parent: NodeIndex,
         node_to_place: Index,
-    ) -> Result<(), SceneGraphErr> {
+    ) -> Result<(), ParentNodeNotFound> {
         // okay, now we gotta ATTACH ourselves back, without being monsters about it
         let parent_children = match new_parent {
             NodeIndex::Root => &mut self.root_children,
             NodeIndex::Branch(idx) => {
-                &mut self
-                    .arena
-                    .get_mut(idx)
-                    .ok_or(SceneGraphErr::ParentNodeNotFound)?
-                    .children
+                &mut self.arena.get_mut(idx).ok_or(ParentNodeNotFound)?.children
             }
         };
 
@@ -525,16 +521,12 @@ impl NodeIndex {
 }
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
-pub enum SceneGraphErr {
-    #[error("parent node not found")]
-    ParentNodeNotFound,
+#[error("parent node not found")]
+pub struct ParentNodeNotFound;
 
-    #[error("not cannot be attachd because it is already present")]
-    NodeAlreadyPresent,
-
-    #[error("node does not exist")]
-    NodeDoesNotExist,
-}
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[error("node does not exist")]
+pub struct NodeDoesNotExist;
 
 #[cfg(test)]
 mod tests {
