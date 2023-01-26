@@ -97,9 +97,11 @@ impl<T> SceneGraph<T> {
 
     /// Removes a given node from the scene graph, returning a new SceneGraph where the given
     /// node is now the *root*.
+    ///
+    /// Note: this always returns `None` when the ndoe doesn't exist, or when the `node_index` is the Root.
     pub fn detach(&mut self, node_index: NodeIndex) -> Option<SceneGraph<T>> {
         let node_index = match node_index {
-            NodeIndex::Root => panic!("attempted to remove the root"),
+            NodeIndex::Root => return None,
             NodeIndex::Branch(idx) => idx,
         };
 
@@ -287,8 +289,29 @@ impl<T> SceneGraph<T> {
     /// Iterate while detaching over the Scene Graph in a depth first traversal.
     ///
     /// Note: the `root` will never be detached.
-    pub fn iter_detach(&mut self) -> SceneGraphDetachIter<'_, T> {
+    pub fn iter_detach_all(&mut self) -> SceneGraphDetachIter<'_, T> {
         SceneGraphDetachIter::new(&mut self.arena, NodeIndex::Root, self.root_children)
+    }
+
+    /// Iterate while detaching over the Scene Graph in a depth first traversal.
+    /// This leaves the `node_index` given, but removes all the children.
+    ///
+    /// Note: the `root` will never be detached.
+    pub fn iter_detach_children(
+        &mut self,
+        node_index: NodeIndex,
+    ) -> Result<SceneGraphDetachIter<'_, T>, NodeDoesNotExist> {
+        if !self.contains(node_index) {
+            return Err(NodeDoesNotExist);
+        }
+
+        let children = self.get_children(node_index).copied();
+
+        Ok(SceneGraphDetachIter::new(
+            &mut self.arena,
+            node_index,
+            children,
+        ))
     }
 
     /// Iterate directly over only the *direct* children of `parent_index`.

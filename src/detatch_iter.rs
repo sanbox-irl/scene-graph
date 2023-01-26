@@ -109,7 +109,7 @@ mod tests {
     fn detach_handles_empty() {
         let mut scene_graph = SceneGraph::new("Root");
 
-        assert!(scene_graph.iter_detach().next().is_none());
+        assert!(scene_graph.iter_detach_all().next().is_none());
     }
 
     #[test]
@@ -122,7 +122,7 @@ mod tests {
         sg.attach(second_child, "First Grandchild").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter_detach().map(|d_v| d_v.node_value)),
+            Vec::from_iter(sg.iter_detach_all().map(|d_v| d_v.node_value)),
             vec!["First Child", "Second Child", "First Grandchild"]
         );
 
@@ -137,7 +137,7 @@ mod tests {
         sg.attach(child, "Second Child").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter_detach().map(|value| value.node_value)),
+            Vec::from_iter(sg.iter_detach_all().map(|value| value.node_value)),
             vec!["First Child", "Second Child"]
         );
         assert!(sg.is_empty());
@@ -150,9 +150,38 @@ mod tests {
         sg.attach(root_idx, "First Child").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter_detach().map(|value| value.node_value)),
+            Vec::from_iter(sg.iter_detach_all().map(|value| value.node_value)),
             vec!["First Child",]
         );
         assert!(sg.is_empty());
+    }
+
+    #[test]
+    fn child_detach_iteration() {
+        let mut sg = SceneGraph::new("Root");
+        let root_idx = NodeIndex::Root;
+        sg.attach(root_idx, "First Child").unwrap();
+
+        let second_child = sg.attach(root_idx, "Second Child").unwrap();
+        sg.attach(second_child, "First Grandchild").unwrap();
+        sg.attach(second_child, "Second Grandchild").unwrap();
+        sg.attach(second_child, "Third Grandchild").unwrap();
+        sg.attach(second_child, "Fourth Grandchild").unwrap();
+
+        assert_eq!(
+            Vec::from_iter(
+                sg.iter_detach_children(second_child)
+                    .unwrap()
+                    .map(|d_v| d_v.node_value)
+            ),
+            vec![
+                "First Grandchild",
+                "Second Grandchild",
+                "Third Grandchild",
+                "Fourth Grandchild"
+            ]
+        );
+
+        assert!(!sg.is_empty());
     }
 }
