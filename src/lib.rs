@@ -98,7 +98,7 @@ impl<T> SceneGraph<T> {
     /// Removes a given node from the scene graph, returning a new SceneGraph where the given
     /// node is now the *root*.
     ///
-    /// Note: this always returns `None` when the ndoe doesn't exist, or when the `node_index` is the Root.
+    /// Note: this always returns `None` when the node doesn't exist, or when the `node_index` is the Root.
     pub fn detach(&mut self, node_index: NodeIndex) -> Option<SceneGraph<T>> {
         let node_index = match node_index {
             NodeIndex::Root => return None,
