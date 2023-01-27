@@ -1,5 +1,7 @@
 use crate::{Children, NodeIndex, SceneGraph};
 
+/// An iterator over only the immediate children of a node in a [SceneGraph].
+/// See [SceneGraph::iter_children] for more information.
 pub struct SceneGraphChildIter<'a, T> {
     sg: &'a SceneGraph<T>,
     current_node: Option<thunderdome::Index>,

@@ -1,6 +1,8 @@
 use crate::{Children, Node, NodeIndex};
 use std::collections::VecDeque;
 
+/// An iterator over the children of a node in a [SceneGraph].
+/// See [SceneGraph::iter_detach] and [SceneGraph::iter_detach_all] for more information.
 pub struct SceneGraphDetachIter<'a, T> {
     sg: &'a mut thunderdome::Arena<Node<T>>,
     stacks: VecDeque<StackState<T>>,
@@ -58,9 +60,14 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
     }
 }
 
+/// A detached node from a scene graph.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct DetachedNode<T> {
+    /// The original parent idx, which may or may not still be in the scene graph itself.
     pub parent_idx: NodeIndex,
+    /// Its old node_index.
     pub node_idx: NodeIndex,
+    /// The value of the node.
     pub node_value: T,
 }
 
@@ -69,7 +76,7 @@ impl<T> std::fmt::Debug for DetachedNode<T> {
         f.debug_struct("DetachedNode")
             .field("parent_idx", &self.parent_idx)
             .field("node_idx", &self.node_idx)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

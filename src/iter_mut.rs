@@ -2,6 +2,8 @@ use thunderdome::Index;
 
 use crate::{Node, NodeIndex, SceneGraph};
 
+/// A mutable iterator over the children of a node in a [SceneGraph].
+/// See [SceneGraph::iter_mut] for more information.
 pub struct SceneGraphIterMut<'a, T> {
     sg: &'a mut SceneGraph<T>,
     stacks: Vec<StackState>,

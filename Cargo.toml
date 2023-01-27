@@ -8,9 +8,6 @@ edition = "2021"
 thunderdome = { git = "https://github.com/sanbox-irl/thunderdome" }
 thiserror = "1.0"
 
-[features]
-deny_double = []
-
 [dev-dependencies]
 criterion = "0.3"
 petgraph = "0.6.2"

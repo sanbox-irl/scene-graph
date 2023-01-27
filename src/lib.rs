@@ -1,3 +1,8 @@
+#![doc = include_str!("../README.md")]
+#![deny(rust_2018_idioms)]
+// #![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+
 use std::cmp::Eq;
 use thunderdome::{Arena, Index};
 
@@ -453,8 +458,10 @@ impl<T> std::ops::IndexMut<NodeIndex> for SceneGraph<T> {
     }
 }
 
+/// A wrapper around the nodes contained within 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Node<T> {
+    /// The value contained within the node.
     pub value: T,
     parent: NodeIndex,
     children: Option<Children>,
