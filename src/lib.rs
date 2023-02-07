@@ -116,10 +116,15 @@ impl<T> SceneGraph<T> {
         let mut helper_map = std::collections::HashMap::new();
         helper_map.insert(NodeIndex::Branch(node_index), NodeIndex::Root);
 
+        let children_to_detach = self
+            .arena
+            .get_mut(node_index)
+            .and_then(|v| v.children.take());
+
         for detached_node in SceneGraphDetachIter::new(
             &mut self.arena,
             NodeIndex::Branch(node_index),
-            node.children,
+            children_to_detach,
         ) {
             let parent_place = match detached_node.parent_idx {
                 NodeIndex::Root => NodeIndex::Root,
@@ -264,7 +269,7 @@ impl<T> SceneGraph<T> {
 
     /// Iterate immutably over the Scene Graph in a depth first traversal.
     pub fn iter(&self) -> SceneGraphIter<'_, T> {
-        self.iter_on_node(NodeIndex::Root).unwrap()
+        self.iter_from_node(NodeIndex::Root).unwrap()
     }
 
     /// Iterate immutably over the Scene Graph out of order. This is, of course, fast.
@@ -275,7 +280,7 @@ impl<T> SceneGraph<T> {
     }
 
     /// Iterate immutably over the Scene Graph in a depth first traversal.
-    pub fn iter_on_node(
+    pub fn iter_from_node(
         &self,
         node_index: NodeIndex,
     ) -> Result<SceneGraphIter<'_, T>, NodeDoesNotExist> {
@@ -291,11 +296,28 @@ impl<T> SceneGraph<T> {
         Ok(SceneGraphIter::new(self, parent_value, children))
     }
 
+    /// Iterate immutably over the Scene Graph in a depth first traversal.
+    pub fn iter_mut_from_node(
+        &mut self,
+        node_index: NodeIndex,
+    ) -> Result<SceneGraphIterMut<'_, T>, NodeDoesNotExist> {
+        match node_index {
+            NodeIndex::Root => {}
+            NodeIndex::Branch(idx) => {
+                if !self.arena.contains(idx) {
+                    return Err(NodeDoesNotExist);
+                }
+            }
+        };
+
+        Ok(SceneGraphIterMut::new(self, node_index))
+    }
+
     /// Iterate while detaching over the Scene Graph in a depth first traversal.
     ///
     /// Note: the `root` will never be detached.
     pub fn iter_detach_all(&mut self) -> SceneGraphDetachIter<'_, T> {
-        SceneGraphDetachIter::new(&mut self.arena, NodeIndex::Root, self.root_children)
+        SceneGraphDetachIter::new(&mut self.arena, NodeIndex::Root, self.root_children.take())
     }
 
     /// Iterate while detaching over the Scene Graph in a depth first traversal.
@@ -306,11 +328,13 @@ impl<T> SceneGraph<T> {
         &mut self,
         node_index: NodeIndex,
     ) -> Result<SceneGraphDetachIter<'_, T>, NodeDoesNotExist> {
-        if !self.contains(node_index) {
-            return Err(NodeDoesNotExist);
-        }
-
-        let children = self.get_children(node_index).copied();
+        let children = match node_index {
+            NodeIndex::Root => self.root_children.take(),
+            NodeIndex::Branch(br) => match self.arena.get_mut(br) {
+                Some(v) => v.children.take(),
+                None => return Err(NodeDoesNotExist),
+            },
+        };
 
         Ok(SceneGraphDetachIter::new(
             &mut self.arena,
@@ -458,7 +482,7 @@ impl<T> std::ops::IndexMut<NodeIndex> for SceneGraph<T> {
     }
 }
 
-/// A wrapper around the nodes contained within 
+/// A wrapper around the nodes contained within
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Node<T> {
     /// The value contained within the node.

@@ -1,28 +1,33 @@
+use thunderdome::Arena;
+
 use crate::{Children, Node, NodeIndex};
 use std::collections::VecDeque;
 
 /// An iterator over the children of a node in a [SceneGraph].
 /// See [SceneGraph::iter_detach] and [SceneGraph::iter_detach_all] for more information.
+///
+/// If the iterator is dropped early, it drops all the remaining elements on the iterator.
 pub struct SceneGraphDetachIter<'a, T> {
-    sg: &'a mut thunderdome::Arena<Node<T>>,
+    arena: &'a mut Arena<Node<T>>,
     stacks: VecDeque<StackState<T>>,
 }
 
 impl<'a, T> SceneGraphDetachIter<'a, T> {
     pub(crate) fn new(
-        sg: &'a mut thunderdome::Arena<Node<T>>,
+        arena: &'a mut Arena<Node<T>>,
         head_index: NodeIndex,
-        children: Option<Children>,
+        current_children: Option<Children>,
     ) -> Self {
         let mut stacks = VecDeque::new();
-        if let Some(children) = children {
+
+        if let Some(children) = current_children {
             stacks.push_front(StackState::new(
                 head_index,
-                sg.remove(children.first).unwrap(),
+                arena.remove(children.first).unwrap(),
                 NodeIndex::Branch(children.first),
             ));
-        };
-        SceneGraphDetachIter { sg, stacks }
+        }
+        SceneGraphDetachIter { arena, stacks }
     }
 }
 
@@ -37,7 +42,7 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
         if let Some(next_sibling) = stack_frame.current_child.next_sibling {
             self.stacks.push_front(StackState::new(
                 stack_frame.parent,
-                self.sg.remove(next_sibling).unwrap(),
+                self.arena.remove(next_sibling).unwrap(),
                 NodeIndex::Branch(next_sibling),
             ));
         }
@@ -46,7 +51,7 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
         if let Some(children) = stack_frame.current_child.children {
             let new_stack = StackState::new(
                 stack_frame.current_child_idx,
-                self.sg.remove(children.first).unwrap(),
+                self.arena.remove(children.first).unwrap(),
                 NodeIndex::Branch(children.first),
             );
             self.stacks.push_front(new_stack);
@@ -57,6 +62,13 @@ impl<'a, T> Iterator for SceneGraphDetachIter<'a, T> {
             node_idx: stack_frame.current_child_idx,
             node_value: stack_frame.current_child.value,
         })
+    }
+}
+
+impl<'a, T> Drop for SceneGraphDetachIter<'a, T> {
+    fn drop(&mut self) {
+        // eat up that iterator
+        for _ in self {}
     }
 }
 
@@ -190,5 +202,65 @@ mod tests {
         );
 
         assert!(!sg.is_empty());
+    }
+
+    #[test]
+    fn child_detach_iteration_grand() {
+        let mut sg = SceneGraph::new("Root");
+        let root_idx = NodeIndex::Root;
+        sg.attach(root_idx, "First Child").unwrap();
+
+        let second_child = sg.attach(root_idx, "Second Child").unwrap();
+        let gc = sg.attach(second_child, "First Grandchild").unwrap();
+        sg.attach(gc, "First Great-Grandchild").unwrap();
+        sg.attach(second_child, "Second Grandchild").unwrap();
+        sg.attach(second_child, "Third Grandchild").unwrap();
+
+        assert_eq!(
+            Vec::from_iter(
+                sg.iter_detach_children(second_child)
+                    .unwrap()
+                    .map(|d_v| d_v.node_value)
+            ),
+            vec![
+                "First Grandchild",
+                "First Great-Grandchild",
+                "Second Grandchild",
+                "Third Grandchild"
+            ]
+        );
+
+        assert!(!sg.is_empty());
+    }
+
+    #[test]
+    fn child_detach_iteration_grand2() {
+        let mut sg = SceneGraph::new("Root");
+        let root_idx = NodeIndex::Root;
+        sg.attach(root_idx, "First Child").unwrap();
+
+        let second_child = sg.attach(root_idx, "Second Child").unwrap();
+        let gc = sg.attach(second_child, "First Grandchild").unwrap();
+        sg.attach(gc, "First Great-Grandchild").unwrap();
+        sg.attach(second_child, "Second Grandchild").unwrap();
+        sg.attach(second_child, "Third Grandchild").unwrap();
+
+        assert_eq!(
+            Vec::from_iter(
+                sg.iter_detach_children(gc)
+                    .unwrap()
+                    .map(|d_v| d_v.node_value)
+            ),
+            vec!["First Great-Grandchild",]
+        );
+
+        assert_eq!(
+            Vec::from_iter(
+                sg.iter_detach_children(gc)
+                    .unwrap()
+                    .map(|d_v| d_v.node_value)
+            ),
+            Vec::<&'static str>::new()
+        );
     }
 }
