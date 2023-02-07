@@ -116,16 +116,13 @@ impl<T> SceneGraph<T> {
         let mut helper_map = std::collections::HashMap::new();
         helper_map.insert(NodeIndex::Branch(node_index), NodeIndex::Root);
 
-        let children_to_detach = self
-            .arena
-            .get_mut(node_index)
-            .and_then(|v| v.children.take());
-
         for detached_node in SceneGraphDetachIter::new(
             &mut self.arena,
             NodeIndex::Branch(node_index),
-            children_to_detach,
+            node.children,
         ) {
+            println!("detached_node = {:#?}", detached_node);
+
             let parent_place = match detached_node.parent_idx {
                 NodeIndex::Root => NodeIndex::Root,
                 NodeIndex::Branch(_) => *helper_map.get(&detached_node.parent_idx).unwrap(),
