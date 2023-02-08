@@ -313,7 +313,7 @@ impl<T> SceneGraph<T> {
     /// Iterate while detaching over the Scene Graph in a depth first traversal.
     ///
     /// Note: the `root` will never be detached.
-    pub fn iter_detach_all(&mut self) -> SceneGraphDetachIter<'_, T> {
+    pub fn iter_detach_from_root(&mut self) -> SceneGraphDetachIter<'_, T> {
         SceneGraphDetachIter::new(&mut self.arena, NodeIndex::Root, self.root_children.take())
     }
 
@@ -321,7 +321,7 @@ impl<T> SceneGraph<T> {
     /// This leaves the `node_index` given, but removes all the children.
     ///
     /// Note: the `root` will never be detached.
-    pub fn iter_detach_children(
+    pub fn iter_detach(
         &mut self,
         node_index: NodeIndex,
     ) -> Result<SceneGraphDetachIter<'_, T>, NodeDoesNotExist> {

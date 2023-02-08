@@ -128,7 +128,7 @@ mod tests {
     fn detach_handles_empty() {
         let mut scene_graph = SceneGraph::new("Root");
 
-        assert!(scene_graph.iter_detach_all().next().is_none());
+        assert!(scene_graph.iter_detach_from_root().next().is_none());
     }
 
     #[test]
@@ -141,7 +141,7 @@ mod tests {
         sg.attach(second_child, "First Grandchild").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter_detach_all().map(|d_v| d_v.node_value)),
+            Vec::from_iter(sg.iter_detach_from_root().map(|d_v| d_v.node_value)),
             vec!["First Child", "Second Child", "First Grandchild"]
         );
 
@@ -156,7 +156,7 @@ mod tests {
         sg.attach(child, "Second Child").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter_detach_all().map(|value| value.node_value)),
+            Vec::from_iter(sg.iter_detach_from_root().map(|value| value.node_value)),
             vec!["First Child", "Second Child"]
         );
         assert!(sg.is_empty());
@@ -169,7 +169,7 @@ mod tests {
         sg.attach(root_idx, "First Child").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter_detach_all().map(|value| value.node_value)),
+            Vec::from_iter(sg.iter_detach_from_root().map(|value| value.node_value)),
             vec!["First Child",]
         );
         assert!(sg.is_empty());
