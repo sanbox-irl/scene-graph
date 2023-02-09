@@ -4,9 +4,13 @@ use crate::{Children, Node, NodeIndex};
 use std::collections::VecDeque;
 
 /// An iterator over the children of a node in a [SceneGraph].
-/// See [SceneGraph::iter_detach] and [SceneGraph::iter_detach_all] for more information.
+/// See [iter_detach] and [iter_detach_all] for more information.
 ///
 /// If the iterator is dropped early, it drops all the remaining elements on the iterator.
+/// 
+/// [SceneGraph]: crate::SceneGraph
+/// [iter_detach]: crate::SceneGraph::iter_detach
+/// [iter_detach_all]: crate::SceneGraph::iter_detach_from_root
 pub struct SceneGraphDetachIter<'a, T> {
     arena: &'a mut Arena<Node<T>>,
     stacks: VecDeque<StackState<T>>,

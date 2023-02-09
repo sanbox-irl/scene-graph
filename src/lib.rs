@@ -465,12 +465,12 @@ impl<T> Node<T> {
     ///         B
     ///         C
     ///             D
-    /// using `iter_children` and passing in the `parent_index` for `A` will only yield `B`
+    /// using `iter_direct_children` and passing in the `parent_index` for `A` will only yield `B`
     /// and `C`, *not* `D`. For that kind of depth first traversal, using `iter_on_node`.
     ///
     /// Note: passing in a SceneGraph of a different kind than this node belongs to (but of the same
     /// type) will create logic errors or panics.
-    pub fn iter_children<'a>(&'a self, sg: &'a SceneGraph<T>) -> SceneGraphChildIter<'a, T> {
+    pub fn iter_direct_children<'a>(&'a self, sg: &'a SceneGraph<T>) -> SceneGraphChildIter<'a, T> {
         SceneGraphChildIter::with_children(sg, self.children.as_ref())
     }
 

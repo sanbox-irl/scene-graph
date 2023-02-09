@@ -2,7 +2,7 @@ use crate::{Children, Node, SceneGraph};
 
 /// An iterator over the SceneGraph. See [iter] for more information.
 /// 
-/// iter: [SceneGraph::iter]
+/// [iter]: SceneGraph::iter
 pub struct SceneGraphIter<'a, T> {
     sg: &'a SceneGraph<T>,
     stacks: Vec<StackState<'a, T>>,

@@ -3,6 +3,11 @@ name = "scene-graph"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["Jonathan Spira <jjspira@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sanbox-irl/scene-graph"
+description = "a fast scene-graph for games and animation"
+categories = ["game-development"]
 
 [dependencies]
 thiserror = "1.0"
