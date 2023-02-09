@@ -1,16 +1,15 @@
 use crate::{Children, Node, SceneGraph};
 
+/// An iterator over the SceneGraph. See [iter] for more information.
+/// 
+/// iter: [SceneGraph::iter]
 pub struct SceneGraphIter<'a, T> {
     sg: &'a SceneGraph<T>,
     stacks: Vec<StackState<'a, T>>,
 }
 
 impl<'a, T> SceneGraphIter<'a, T> {
-    pub(crate) fn new(
-        sg: &'a SceneGraph<T>,
-        root_value: &'a T,
-        root_children: Option<&'a Children>,
-    ) -> Self {
+    pub(crate) fn new(sg: &'a SceneGraph<T>, root_value: &'a T, root_children: Option<&'a Children>) -> Self {
         let mut stacks = Vec::new();
         if let Some(first_child) = root_children.map(|v| v.first) {
             stacks.push(StackState::new(root_value, &sg.arena[first_child]));
@@ -28,10 +27,8 @@ impl<'a, T> Iterator for SceneGraphIter<'a, T> {
 
         // if there's a sibling, push it onto the to do list!
         if let Some(next_sibling) = stack_frame.current_child.next_sibling {
-            self.stacks.push(StackState::new(
-                stack_frame.parent_value,
-                &self.sg.arena[next_sibling],
-            ));
+            self.stacks
+                .push(StackState::new(stack_frame.parent_value, &self.sg.arena[next_sibling]));
         }
 
         if let Some(first_child) = stack_frame.current_child.children.map(|v| v.first) {

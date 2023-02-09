@@ -44,11 +44,13 @@ mod tests {
     fn scene_graph_returns_nothing_on_empty_iteration() {
         let scene_graph = SceneGraph::new("Root");
 
-        assert!(scene_graph
-            .iter_children(NodeIndex::Root)
-            .unwrap()
-            .next()
-            .is_none());
+        assert!(
+            scene_graph
+                .iter_direct_children(NodeIndex::Root)
+                .unwrap()
+                .next()
+                .is_none()
+        );
     }
 
     #[test]
@@ -61,7 +63,7 @@ mod tests {
         sg.attach(fg, "Third Grandchild").unwrap();
 
         assert_eq!(
-            Vec::from_iter(sg.iter_children(fg).unwrap().cloned()),
+            Vec::from_iter(sg.iter_direct_children(fg).unwrap().cloned()),
             vec!["First Grandchild", "Second Grandchild", "Third Grandchild"]
         );
     }

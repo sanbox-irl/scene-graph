@@ -188,11 +188,7 @@ mod tests {
         sg.attach(second_child, "Fourth Grandchild").unwrap();
 
         assert_eq!(
-            Vec::from_iter(
-                sg.iter_detach_children(second_child)
-                    .unwrap()
-                    .map(|d_v| d_v.node_value)
-            ),
+            Vec::from_iter(sg.iter_detach(second_child).unwrap().map(|d_v| d_v.node_value)),
             vec![
                 "First Grandchild",
                 "Second Grandchild",
@@ -217,11 +213,7 @@ mod tests {
         sg.attach(second_child, "Third Grandchild").unwrap();
 
         assert_eq!(
-            Vec::from_iter(
-                sg.iter_detach_children(second_child)
-                    .unwrap()
-                    .map(|d_v| d_v.node_value)
-            ),
+            Vec::from_iter(sg.iter_detach(second_child).unwrap().map(|d_v| d_v.node_value)),
             vec![
                 "First Grandchild",
                 "First Great-Grandchild",
@@ -246,20 +238,12 @@ mod tests {
         sg.attach(second_child, "Third Grandchild").unwrap();
 
         assert_eq!(
-            Vec::from_iter(
-                sg.iter_detach_children(gc)
-                    .unwrap()
-                    .map(|d_v| d_v.node_value)
-            ),
+            Vec::from_iter(sg.iter_detach(gc).unwrap().map(|d_v| d_v.node_value)),
             vec!["First Great-Grandchild",]
         );
 
         assert_eq!(
-            Vec::from_iter(
-                sg.iter_detach_children(gc)
-                    .unwrap()
-                    .map(|d_v| d_v.node_value)
-            ),
+            Vec::from_iter(sg.iter_detach(gc).unwrap().map(|d_v| d_v.node_value)),
             Vec::<&'static str>::new()
         );
     }

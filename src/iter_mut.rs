@@ -13,7 +13,7 @@ impl<'a, T> SceneGraphIterMut<'a, T> {
     pub(crate) fn new(sg: &'a mut SceneGraph<T>, root_node_idx: NodeIndex) -> Self {
         let mut stacks = Vec::new();
 
-        if let Some(first_child) = sg.get_children(root_node_idx).map(|v| v.first) {
+        if let Some(first_child) = sg.get(root_node_idx).and_then(|v| v.children.map(|v| v.first)) {
             stacks.push(StackState::new(root_node_idx, first_child));
         };
         SceneGraphIterMut { sg, stacks }
@@ -36,8 +36,7 @@ impl<'a, T> Iterator for SceneGraphIterMut<'a, T> {
                 (parent, child)
             }
             NodeIndex::Branch(idx) => {
-                let (parent, current_child) =
-                    self.sg.arena.get2_mut(idx, stack_frame.current_child);
+                let (parent, current_child) = self.sg.arena.get2_mut(idx, stack_frame.current_child);
 
                 (&mut parent.unwrap().value, current_child.unwrap())
             }
@@ -51,8 +50,7 @@ impl<'a, T> Iterator for SceneGraphIterMut<'a, T> {
 
         // if there's a sibling, push it onto the to do list!
         if let Some(next_sibling) = current_child.next_sibling {
-            self.stacks
-                .push(StackState::new(stack_frame.parent, next_sibling));
+            self.stacks.push(StackState::new(stack_frame.parent, next_sibling));
         }
 
         if let Some(first_child) = current_child.children.map(|v| v.first) {
