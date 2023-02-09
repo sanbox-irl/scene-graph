@@ -74,8 +74,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     });
     group.bench_function("petgraph", |b| {
         b.iter(|| {
-            petgraph::visit::depth_first_search(&petgraph_sg, Some(root_idx), |event| {
-                black_box(event);
+            petgraph::visit::depth_first_search(&petgraph_sg, Some(root_idx), |event| match event {
+                petgraph::visit::DfsEvent::Discover(_, _) => todo!(),
+                petgraph::visit::DfsEvent::TreeEdge(_, _) => todo!(),
+                petgraph::visit::DfsEvent::BackEdge(_, _) => todo!(),
+                petgraph::visit::DfsEvent::CrossForwardEdge(_, _) => todo!(),
+                petgraph::visit::DfsEvent::Finish(_, _) => todo!(),
             });
         })
     });

@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use std::cmp::Eq;
+use std::{cmp::Eq, collections::HashMap};
 use thunderdome::{Arena, Index};
 
 mod child_iter;
@@ -84,15 +84,15 @@ impl<T> SceneGraph<T> {
 
     /// Attaches an entire scene graph to a place on this graph. The old root node will be at
     /// the returned NodeIndex.
-    pub fn attach_graph_unsafe(
+    pub fn attach_graph(
         &mut self,
         parent: NodeIndex,
         mut other_graph: SceneGraph<T>,
-    ) -> Result<NodeIndex, ParentNodeNotFound> {
+    ) -> Result<(NodeIndex, HashMap<NodeIndex, NodeIndex>), ParentNodeNotFound> {
         let other_root = other_graph.root;
         let new_root_idx = self.attach(parent, other_root)?;
 
-        let mut helper_map = std::collections::HashMap::new();
+        let mut helper_map = HashMap::new();
         helper_map.insert(NodeIndex::Root, new_root_idx);
 
         let detach_iter = SceneGraphDetachIter::new(&mut other_graph.arena, NodeIndex::Root, other_graph.root_children);
@@ -104,7 +104,7 @@ impl<T> SceneGraph<T> {
             helper_map.insert(detached_node.node_idx, new_idx);
         }
 
-        Ok(new_root_idx)
+        Ok((new_root_idx, helper_map))
     }
 
     /// Removes a given node from the scene graph, returning a new SceneGraph where the given
@@ -291,9 +291,7 @@ impl<T> SceneGraph<T> {
     }
 
     /// Iterate while detaching over the Scene Graph in a depth first traversal.
-    /// This leaves the `node_index` given, but removes all the children.
-    ///
-    /// Note: the `root` will never be detached.
+    /// This leaves the `node_index` given in the graph, but removes all its descendents.
     pub fn iter_detach(&mut self, node_index: NodeIndex) -> Result<SceneGraphDetachIter<'_, T>, NodeDoesNotExist> {
         let children = match node_index {
             NodeIndex::Root => self.root_children.take(),
