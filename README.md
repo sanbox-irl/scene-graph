@@ -23,7 +23,7 @@ cargo add scene-graph
 Here's a basic `SceneGraph` example:
 
 ```rust
-use scene_graph::{SceneGraph};
+use scene_graph::SceneGraph;
 
 fn main() {
     let mut sg: SceneGraph<&'static str> = SceneGraph::new("root");
@@ -46,11 +46,20 @@ fn main() {
     let nodes = Vec::from_iter(sg.iter().map(|(_parent, node)| *node));
 
     // note the iteration order -- because we `iter` depth first, we'll get the youngest child last.
-    assert_eq!(nodes, ["first child", "second child", "first grand-child", "second grand-child", "weird third way younger child"]);
+    assert_eq!(
+        nodes,
+        [
+            "first child",
+            "second child",
+            "first grand-child",
+            "second grand-child",
+            "weird third way younger child"
+        ]
+    );
 }
 ```
 
-SceneGraph's `iter` function returns a tuple of Parent value and current value. This is because SceneGraph is designed, primarily, for trees of Transforms, and its `iter` is the best way to iterate over those transforms to resolve a scene graph. However, SceneGraph does not have any requirements on the `T` it contains (ie, `T` does not have to be `Copy`), so other kinds of graphs can be made in it.
+SceneGraph's `iter` function returns a tuple of the parent's value and the current node's value in a *depth first* traversal. SceneGraph is designed, primarily, for trees of Transforms, and its `iter` is the best way to iterate over those transforms to resolve a scene graph of local transforms into world space transforms.
 
 ## Detaching Nodes
 
@@ -74,7 +83,9 @@ However, this is not where `scene-graph`'s utility really shines -- `scene-graph
 
 ```rs
 // in `scene-graph`
-for (parent, child) in sg.iter() {}
+for (parent, child) in sg.iter() {
+    todo!();
+}
 
 // in `petgraph`
 petgraph::visit::depth_first_search(&petgraph_sg, Some(root_idx), |event| match event {
@@ -86,7 +97,7 @@ petgraph::visit::depth_first_search(&petgraph_sg, Some(root_idx), |event| match 
 });
 ```
 
-However, `petgraph` offers many algorithms which `scene-graph` completely lacks. For example, finding the distance between two nodes in the graph is simple in `petgraph` and completely in users hands in `scene-graph`.
+However, `petgraph` offers many algorithms which `scene-graph` completely lacks. For example, finding the distance between two nodes in the graph is simple in `petgraph` and completely in users' hands in `scene-graph`.
 
 ## Dependencies
 
