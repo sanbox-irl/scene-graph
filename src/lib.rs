@@ -30,8 +30,9 @@ pub use iter_mut::SceneGraphIterMut;
 /// iterators available.
 #[derive(Debug)]
 pub struct SceneGraph<T> {
+    /// The root value of the scene graph.
+    pub root: T,
     arena: Arena<Node<T>>,
-    root: T,
     root_children: Option<Children>,
 }
 
@@ -160,7 +161,7 @@ impl<T> SceneGraph<T> {
             }
         }
 
-        // okay, now we hot swap these bitches
+        // okay, now we hot swap em
         let moving_node = self.arena.get_mut(moving_node_idx).expect("we checked earlier");
         let old_parent = moving_node.parent;
         moving_node.parent = new_parent;
@@ -179,7 +180,8 @@ impl<T> SceneGraph<T> {
         Ok(())
     }
 
-    /// Removes a node *without* returning anything. This can save a few allocations.
+    /// Removes a node *without* returning anything. This can save a few allocations. This removes
+    /// all of its children as well.
     pub fn remove(&mut self, node_index: NodeIndex) {
         let index = match node_index {
             NodeIndex::Root => panic!("you cannot remove the root"),
@@ -202,8 +204,8 @@ impl<T> SceneGraph<T> {
         }
     }
 
-    /// Gets a given node based on `NodeIndex`. Note that the `Root` always returns `None`,
-    /// as it is not a true node. Use `get_children` to generically get children.
+    /// Gets a given node based on `NodeIndex`. Note that the `Root` always returns `None`.
+    /// Simply access `root_value` to get the root value.
     pub fn get(&self, node_index: NodeIndex) -> Option<&Node<T>> {
         match node_index {
             NodeIndex::Root => None,

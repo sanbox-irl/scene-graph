@@ -13,7 +13,12 @@ impl<'a, T> SceneGraphIterMut<'a, T> {
     pub(crate) fn new(sg: &'a mut SceneGraph<T>, root_node_idx: NodeIndex) -> Self {
         let mut stacks = Vec::new();
 
-        if let Some(first_child) = sg.get(root_node_idx).and_then(|v| v.children.map(|v| v.first)) {
+        let first_child = match root_node_idx {
+            NodeIndex::Root => sg.root_children.map(|v| v.first),
+            NodeIndex::Branch(idx) => sg.arena.get(idx).and_then(|v| v.children.map(|v| v.first)),
+        };
+
+        if let Some(first_child) = first_child {
             stacks.push(StackState::new(root_node_idx, first_child));
         };
         SceneGraphIterMut { sg, stacks }
